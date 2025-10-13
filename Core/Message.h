@@ -1,0 +1,210 @@
+/**
+ * @file Message.h
+ * @brief 消息结构定义和相关数据类型
+ * @date 2025-08-03
+ * @author Jiangkai
+ * 
+ * 定义了DDS系统中使用的消息格式、消息头、Topic信息等核心数据结构。
+ * 包含消息的序列化、校验和时间戳等功能。
+ */
+
+#pragma once
+
+#include <cstdint>
+#include <chrono>
+
+namespace MB_DDS {
+namespace Core {
+
+/**
+ * @struct MessageHeader
+ * @brief 消息头结构，包含消息的元数据信息
+ * 
+ * 每个消息都以此结构开头，用于消息的验证、路由和时序管理。
+ */
+struct alignas(8) MessageHeader {
+    uint32_t magic;           ///< 魔数，用于消息格式验证
+    uint32_t topic_id;        ///< Topic唯一标识符
+    uint64_t sequence;        ///< 消息序列号，用于排序和去重
+    uint64_t timestamp;       ///< 消息时间戳（纳秒精度）
+    uint32_t data_size;       ///< 消息数据部分的大小（字节）
+    uint32_t checksum;        ///< 消息校验和，用于数据完整性验证
+    
+    static constexpr uint32_t MAGIC_NUMBER = 0xDEADBEEF; ///< 消息魔数常量
+    
+    /**
+     * @brief 默认构造函数，初始化所有字段
+     */
+    MessageHeader() : magic(MAGIC_NUMBER), topic_id(0), sequence(0), 
+                     timestamp(0), data_size(0), checksum(0) {}
+    
+    /**
+     * @brief 设置当前时间戳
+     * 使用高精度时钟获取当前时间并设置到timestamp字段
+     */
+    void set_timestamp() {
+        auto now = std::chrono::high_resolution_clock::now();
+        timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            now.time_since_epoch()).count();
+    }
+    
+    /**
+     * @brief 验证消息头的有效性
+     * @return 消息头有效返回true，否则返回false
+     */
+    bool is_valid() const {
+        return magic == MAGIC_NUMBER;
+    }
+    
+    /**
+     * @brief 计算数据的校验
+     * @param data 数据指针
+     * @param size 数据大小
+     * @return 计算得到的校验
+     */
+    static uint32_t calculate_checksum(const void* data, size_t size) {
+        // const uint8_t* bytes = static_cast<const uint8_t*>(data);
+        // uint32_t crc = 0xFFFFFFFF;
+        
+        // for (size_t i = 0; i < size; ++i) {
+        //     crc ^= bytes[i];
+        //     for (int j = 0; j < 8; ++j) {
+        //         if (crc & 1) {
+        //             crc = (crc >> 1) ^ 0xEDB88320;
+        //         } else {
+        //             crc >>= 1;
+        //         }
+        //     }
+        // }
+        
+        // return ~crc;
+
+        // 上述代码仅为示例，当前不计算校验，等待任务需求确定
+        return 0;
+    }
+    
+    /**
+     * @brief 设置校验和
+     * @param data 数据指针
+     * @param size 数据大小
+     */
+    void set_checksum(const void* data, size_t size) {
+        checksum = calculate_checksum(data, size);
+    }
+    
+    /**
+     * @brief 验证校验和
+     * @param data 数据指针
+     * @param size 数据大小
+     * @return 校验和正确返回true，否则返回false
+     */
+    bool verify_checksum(const void* data, size_t size) const {
+        return checksum == calculate_checksum(data, size);
+    }
+    
+    /**
+     * @brief 验证校验和（无参数版本，用于Message结构）
+     * @return 校验和正确返回true，否则返回false
+     */
+    bool verify_checksum() const {
+        // 当前实现中校验和计算被注释掉，总是返回true
+        return true;
+    }
+};
+
+/**
+ * @struct Message
+ * @brief 完整的消息结构，包含消息头和数据指针
+ * 
+ * 采用头数据分离的设计，消息头和数据可以分别存储在不同的内存区域。
+ * 适用于共享内存场景，避免大块数据的拷贝操作。
+ */
+struct alignas(8) Message {
+    MessageHeader header;     ///< 消息头
+    void* data_ptr;          ///< 数据指针，指向实际数据位置
+    
+    /**
+     * @brief 默认构造函数
+     */
+    Message() : data_ptr(nullptr) {}
+    
+    /**
+     * @brief 构造函数，初始化消息头和数据指针
+     * @param topic_id Topic ID
+     * @param sequence 序列号
+     * @param data 数据指针
+     * @param data_size 数据大小
+     */
+    Message(uint32_t topic_id, uint64_t sequence, void* data, uint32_t data_size) 
+        : data_ptr(data) {
+        header.topic_id = topic_id;
+        header.sequence = sequence;
+        header.data_size = data_size;
+        header.set_timestamp();
+        if (data && data_size > 0) {
+            header.set_checksum(data, data_size);
+        }
+    }
+    
+    /**
+     * @brief 计算包含指定数据大小的消息总大小
+     * @param data_size 数据部分的大小
+     * @return 消息总大小（消息头 + 数据部分）
+     */
+    static size_t total_size(size_t data_size) {
+        return sizeof(MessageHeader) + data_size;
+    }
+    
+    /**
+     * @brief 获取数据部分的可写指针
+     * @return 数据部分指针
+     */
+    void* get_data() { return data_ptr; }
+    
+    /**
+     * @brief 获取数据部分的只读指针
+     * @return 数据部分常量指针
+     */
+    const void* get_data() const { return data_ptr; }
+    
+    /**
+     * @brief 设置数据指针
+     * @param ptr 指向数据的指针
+     */
+    void set_data(void* ptr) { 
+        data_ptr = ptr; 
+        // 如果设置了新的数据指针，重新计算校验和
+        if (ptr && header.data_size > 0) {
+            header.set_checksum(ptr, header.data_size);
+        }
+    }
+    
+    /**
+     * @brief 验证消息的完整性
+     * @return 消息有效且校验和正确返回true，否则返回false
+     */
+    bool is_valid() const {
+        if (!header.is_valid()) {
+            return false;
+        }
+        if (data_ptr && header.data_size > 0) {
+            return header.verify_checksum(data_ptr, header.data_size);
+        }
+        return header.data_size == 0; // 空数据消息也是有效的
+    }
+    
+    /**
+     * @brief 更新消息的时间戳和校验和
+     */
+    void update() {
+        header.set_timestamp();
+        if (data_ptr && header.data_size > 0) {
+            header.set_checksum(data_ptr, header.data_size);
+        }
+    }
+};
+
+} // namespace Core
+} // namespace MB_DDS
+
+

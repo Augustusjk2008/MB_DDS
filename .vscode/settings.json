@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "ratio": "cpp",
+        "mutex": "cpp",
+        "string": "cpp",
+        "atomic": "cpp",
+        "xlocale": "cpp",
+        "xmemory": "cpp"
+    }
+}
