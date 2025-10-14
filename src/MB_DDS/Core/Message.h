@@ -62,7 +62,7 @@ struct alignas(8) MessageHeader {
      * @param size 数据大小
      * @return 计算得到的校验
      */
-    static uint32_t calculate_checksum(const void* data, size_t size) {
+    static uint32_t calculate_checksum(const void*, size_t) {
         // const uint8_t* bytes = static_cast<const uint8_t*>(data);
         // uint32_t crc = 0xFFFFFFFF;
         

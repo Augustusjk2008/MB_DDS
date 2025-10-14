@@ -32,7 +32,7 @@ namespace PhysicalLayer {
 void BasePhysicalLink::setStatus(LinkStatus new_status) {
     // 检查状态是否真正发生变化，避免无效更新
     if (status_ != new_status) {
-        LinkStatus old_status = status_;    // 保存旧状态供调试使用
+        // LinkStatus old_status = status_;    // 保存旧状态供调试使用
         status_ = new_status;               // 更新为新状态
         
         // 此处可扩展状态变更日志记录或回调通知
@@ -56,8 +56,8 @@ void BasePhysicalLink::setStatus(LinkStatus new_status) {
 bool BasePhysicalLink::validateConfig(const LinkConfig& config) {
     // 基本参数验证
     
-    // MTU验证：不能为0，且不能超过65536
-    if (config.mtu == 0 || config.mtu > 65535) {
+    // MTU验证：不能为0，且不能超过65536（16位）
+    if (config.mtu == 0) {
         return false;   // MTU参数无效
     }
     

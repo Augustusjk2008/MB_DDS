@@ -69,7 +69,7 @@ bool SharedMemoryManager::create_or_open_shm() {
             shm_fd_ = -1;  // 重置文件描述符，避免资源泄漏
             return false;
         }
-    } else if (sb.st_size != shm_size_) {
+    } else if ((size_t)sb.st_size != shm_size_) {
         std::cerr << "Warning: Shared memory segment \"" << shm_name_ 
                   << "\" already exists with different size. Expected " 
                   << shm_size_ << ", got " << sb.st_size << std::endl;
