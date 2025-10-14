@@ -1,0 +1,15 @@
+# 忽略所有 build 目录
+build/
+
+# 忽略所有 CMake 生成的文件
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# 忽略编译产物
+*.o
+*.a
+*.so
+*.dll
+*.exe
