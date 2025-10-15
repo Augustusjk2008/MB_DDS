@@ -15,7 +15,7 @@
 #include <fcntl.h>
 #include <sys/select.h>
 
-namespace MB_DDS {
+namespace MB_DDF {
 namespace PhysicalLayer {
 
 /**
@@ -577,4 +577,4 @@ Address UdpLink::sockaddrToAddress(const struct sockaddr_in& sockaddr) {
 }
 
 }  // namespace PhysicalLayer
-}  // namespace MB_DDS
+}  // namespace MB_DDF

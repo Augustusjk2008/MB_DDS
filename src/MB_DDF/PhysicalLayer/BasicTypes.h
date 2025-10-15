@@ -11,12 +11,9 @@
 #pragma once
 
 #include <cstdint>
-#include <vector>
-#include <memory>
-#include <functional>
 #include <string>
 
-namespace MB_DDS {
+namespace MB_DDF {
 namespace PhysicalLayer {
 
 /**
@@ -207,4 +204,4 @@ enum class LinkStatus {
 };
 
 }  // namespace PhysicalLayer
-}  // namespace MB_DDS
+}  // namespace MB_DDF

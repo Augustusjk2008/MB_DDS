@@ -14,7 +14,7 @@
 #include "IPhysicalLink.h"
 #include <string>
 
-namespace MB_DDS {
+namespace MB_DDF {
 namespace PhysicalLayer {
     
 /**
@@ -114,7 +114,7 @@ public:
      * 派生类必须实现此方法，完成具体链路类型的初始化工作。
      * 应在实现中调用validateConfig验证配置参数。
      */
-    virtual bool initialize(const LinkConfig& config) = 0;
+    virtual bool initialize(const LinkConfig& config) override = 0;
     
     /**
      * @brief 打开物理链路（纯虚函数）
@@ -123,7 +123,7 @@ public:
      * 派生类必须实现此方法，完成具体链路的打开操作。
      * 成功时应调用setStatus(LinkStatus::OPEN)更新状态。
      */
-    virtual bool open() = 0;
+    virtual bool open() override = 0;
     
     /**
      * @brief 关闭物理链路（纯虚函数）
@@ -132,7 +132,7 @@ public:
      * 派生类必须实现此方法，完成具体链路的关闭操作。
      * 成功时应调用setStatus(LinkStatus::CLOSED)更新状态。
      */
-    virtual bool close() = 0;
+    virtual bool close() override = 0;
     
     /**
      * @brief 发送数据到指定地址（纯虚函数）
@@ -144,7 +144,7 @@ public:
      * 派生类必须实现此方法，完成具体协议的数据发送。
      * 应检查数据长度不超过MTU限制。
      */
-    virtual bool send(const uint8_t* data, uint32_t length, const Address& dest_addr) = 0;
+    virtual bool send(const uint8_t* data, uint32_t length, const Address& dest_addr) override = 0;
     
     /**
      * @brief 非阻塞方式接收数据（纯虚函数）
@@ -155,7 +155,7 @@ public:
      * 
      * 派生类必须实现此方法，完成具体协议的非阻塞数据接收。
      */
-    virtual int32_t receive(uint8_t* buffer, uint32_t buffer_size, Address& src_addr) = 0;
+    virtual int32_t receive(uint8_t* buffer, uint32_t buffer_size, Address& src_addr) override = 0;
     
     /**
      * @brief 阻塞方式接收数据（纯虚函数）
@@ -167,7 +167,7 @@ public:
      * 
      * 派生类必须实现此方法，完成具体协议的阻塞数据接收。
      */
-    virtual int32_t receive(uint8_t* buffer, uint32_t buffer_size, Address& src_addr, uint32_t timeout_us) = 0;
+    virtual int32_t receive(uint8_t* buffer, uint32_t buffer_size, Address& src_addr, uint32_t timeout_us) override = 0;
     
     /**
      * @brief 设置链路特定的自定义参数（纯虚函数）
@@ -177,8 +177,8 @@ public:
      * 
      * 派生类必须实现此方法，处理特定链路类型的自定义参数。
      */
-    virtual bool setCustomParameter(const std::string& key, const std::string& value) = 0;
+    virtual bool setCustomParameter(const std::string& key, const std::string& value) override = 0;
 };
 
 }  // namespace PhysicalLayer
-}  // namespace MB_DDS
+}  // namespace MB_DDF

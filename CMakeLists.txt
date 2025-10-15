@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.10)
 
 # 项目名称
-project(MB_DDS_Demo LANGUAGES CXX)
+project(MB_DDF_Demo LANGUAGES CXX)
 
 # 设置默认构建类型（如果没有指定）
 if(NOT CMAKE_BUILD_TYPE)
@@ -18,14 +18,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 递归查找所有源文件
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
-    "src/MB_DDS/*.cpp"
+    "src/MB_DDF/*.cpp"
     "src/TestMain.cpp"
 )
 
 # 递归查找所有头文件
 file(GLOB_RECURSE HEADERS CONFIGURE_DEPENDS
-    "src/MB_DDS/*.h"
-    "src/MB_DDS/*.hpp"
+    "src/MB_DDF/*.h"
+    "src/MB_DDF/*.hpp"
 )
 
 # 添加可执行文件

@@ -13,8 +13,8 @@
 #include <cstdint>
 #include <chrono>
 
-namespace MB_DDS {
-namespace Core {
+namespace MB_DDF {
+namespace DDS {
 
 /**
  * @struct MessageHeader
@@ -156,6 +156,22 @@ struct alignas(8) Message {
     }
     
     /**
+     * @brief 计算当前消息的总大小（消息头 + 数据部分）
+     * @return 消息总大小
+     */
+    size_t msg_size() const {
+        return sizeof(MessageHeader) + header.data_size;
+    }
+
+    /**
+     * @brief 获取数据部分的大小
+     * @return 数据部分大小（字节）
+     */
+    size_t msg_data_size() const {
+        return header.data_size;
+    }
+    
+    /**
      * @brief 获取数据部分的可写指针
      * @return 数据部分指针
      */
@@ -187,8 +203,8 @@ struct alignas(8) Message {
         if (!header.is_valid()) {
             return false;
         }
-        if (data_ptr && header.data_size > 0) {
-            return header.verify_checksum(data_ptr, header.data_size);
+        if (data_ptr) {
+            return header.verify_checksum();
         }
         return header.data_size == 0; // 空数据消息也是有效的
     }
@@ -204,7 +220,7 @@ struct alignas(8) Message {
     }
 };
 
-} // namespace Core
-} // namespace MB_DDS
+} // namespace DDS
+} // namespace MB_DDF
 
 

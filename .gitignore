@@ -1,7 +1,7 @@
-# 忽略所有 build 目录
+# 忽略部分目录
 build/
 
-# 忽略所有 CMake 生成的文件
+# 忽略 CMake 生成的文件
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
@@ -13,3 +13,5 @@ Makefile
 *.so
 *.dll
 *.exe
+*.elf
+*.out

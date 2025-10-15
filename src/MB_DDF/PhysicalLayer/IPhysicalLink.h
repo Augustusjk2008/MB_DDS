@@ -13,7 +13,7 @@
 
 #include "BasicTypes.h"
 
-namespace MB_DDS {
+namespace MB_DDF {
 namespace PhysicalLayer {
 
 /**
@@ -146,5 +146,5 @@ public:
 };
 
 }  // namespace PhysicalLayer
-}  // namespace MB_DDS
+}  // namespace MB_DDF
     

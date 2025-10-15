@@ -16,8 +16,8 @@
 #include <unistd.h>
 #include <semaphore.h>
 
-namespace MB_DDS {
-namespace Core {
+namespace MB_DDF {
+namespace DDS {
 
 /**
  * @class SharedMemoryManager
@@ -85,7 +85,7 @@ private:
     bool create_or_open_semaphore();
 };
 
-} // namespace Core
-} // namespace MB_DDS
+} // namespace DDS
+} // namespace MB_DDF
 
 

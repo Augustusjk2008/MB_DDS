@@ -10,12 +10,11 @@
 
 #include "SharedMemory.h"
 #include <iostream>
-#include <stdexcept>
 #include <cstring> // For strerror
 #include <sys/stat.h> // For fstat
 
-namespace MB_DDS {
-namespace Core {
+namespace MB_DDF {
+namespace DDS {
 
 SharedMemoryManager::SharedMemoryManager(const std::string& name, size_t size)
     : shm_name_(name), shm_size_(size), shm_fd_(-1), shm_addr_(nullptr), shm_sem_(nullptr) {
@@ -105,7 +104,7 @@ bool SharedMemoryManager::create_or_open_semaphore() {
     return true;
 }
 
-} // namespace Core
-} // namespace MB_DDS
+} // namespace DDS
+} // namespace MB_DDF
 
 

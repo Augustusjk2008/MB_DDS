@@ -13,12 +13,10 @@
 #include <cstdint>
 #include <string>
 #include <atomic>
-#include <mutex>
-#include <unordered_map>
 #include <vector>
 
-namespace MB_DDS {
-namespace Core {
+namespace MB_DDF {
+namespace DDS {
 
 /**
  * @struct TopicMetadata
@@ -103,6 +101,15 @@ public:
      */
     std::vector<TopicMetadata*> get_all_topics();
 
+    /**
+     * @brief 验证Topic名称格式是否合法
+     * @param name Topic名称
+     * @return 格式合法返回true，否则返回false
+     * 
+     * 要求格式为"[域名称]://[地址名称]"，域名称和地址名称均不得为空
+     */
+    bool is_valid_topic_name(const std::string& name);
+
 private:
     void* shm_base_addr_;                ///< 共享内存基地址
     size_t shm_size_;                    ///< 共享内存总大小
@@ -116,7 +123,7 @@ private:
     static constexpr size_t ALIGNMENT = 64;                                             ///< 内存对齐大小
 };
 
-} // namespace Core
-} // namespace MB_DDS
+} // namespace DDS
+} // namespace MB_DDF
 
 

@@ -16,11 +16,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include <thread>
-#include <atomic>
-#include <mutex>
 
-namespace MB_DDS {
+namespace MB_DDF {
 namespace PhysicalLayer {
 
 /**
@@ -240,4 +237,4 @@ public:
 };
 
 }  // namespace PhysicalLayer
-}  // namespace MB_DDS
+}  // namespace MB_DDF

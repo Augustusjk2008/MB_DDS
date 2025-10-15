@@ -12,11 +12,9 @@
 #include "SharedMemory.h"
 #include <cstring>
 #include <iostream>
-#include <algorithm>
-#include <stdexcept>
 
-namespace MB_DDS {
-namespace Core {
+namespace MB_DDF {
+namespace DDS {
 
 TopicRegistry::TopicRegistry(void* shm_base_addr, size_t shm_size, SharedMemoryManager* shm_manager)
     : shm_base_addr_(shm_base_addr), shm_size_(shm_size), shm_manager_(shm_manager) {
@@ -56,6 +54,12 @@ TopicRegistry::TopicRegistry(void* shm_base_addr, size_t shm_size, SharedMemoryM
 }
 
 TopicMetadata* TopicRegistry::register_topic(const std::string& name, size_t rb_size) {
+    // 检查Topic名称是否合法
+    if (!is_valid_topic_name(name)) {
+        std::cerr << "Invalid topic name format: " << name << std::endl;
+        return nullptr;
+    }
+
     // 使用信号量保护整个操作
     sem_t* sem = shm_manager_->get_semaphore();
     if (sem_wait(sem) == -1) {
@@ -191,6 +195,33 @@ std::vector<TopicMetadata*> TopicRegistry::get_all_topics() {
     return topics;
 }
 
-} // namespace Core
-} // namespace MB_DDS
+bool TopicRegistry::is_valid_topic_name(const std::string& name) {
+    // 检查名称是否为空
+    if (name.empty()) {
+        return false;
+    }
+    
+    // 查找 "://" 分隔符
+    size_t separator_pos = name.find("://");
+    if (separator_pos == std::string::npos) {
+        return false;
+    }
+    
+    // 提取域名称（分隔符之前的部分）
+    std::string domain = name.substr(0, separator_pos);
+    if (domain.empty()) {
+        return false;
+    }
+    
+    // 提取地址名称（分隔符之后的部分）
+    std::string address = name.substr(separator_pos + 3);
+    if (address.empty()) {
+        return false;
+    }
+    
+    return true;
+}
+
+} // namespace DDS
+} // namespace MB_DDF
 

@@ -10,10 +10,9 @@
  */
 
 #include "BasePhysicalLink.h"
-#include <algorithm>
 #include <cstring>
 
-namespace MB_DDS {
+namespace MB_DDF {
 namespace PhysicalLayer {
 
 /**
@@ -130,4 +129,4 @@ std::string BasePhysicalLink::getLastErrorString() const {
 }
 
 }  // namespace PhysicalLayer
-}  // namespace MB_DDS
+}  // namespace MB_DDF

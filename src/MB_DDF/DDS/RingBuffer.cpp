@@ -7,31 +7,30 @@
 
 #include "RingBuffer.h"
 #include <cstring>
-#include <algorithm>
 #include <semaphore.h>
 #include <sys/time.h>
 
-namespace MB_DDS {
-namespace Core {
+namespace MB_DDF {
+namespace DDS {
 
 RingBuffer::RingBuffer(void* buffer, size_t size, sem_t* sem) : sem_(sem) {
     // 计算各部分在共享内存中的布局
     char* base = static_cast<char*>(buffer);
     
     // 头部结构
-    header_ = reinterpret_cast<Header*>(base);
+    header_ = reinterpret_cast<RingHeader*>(base);
     
     // 订阅者注册表
-    registry_ = reinterpret_cast<SubscriberRegistry*>(base + sizeof(Header));
+    registry_ = reinterpret_cast<SubscriberRegistry*>(base + sizeof(RingHeader));
     
     // 数据存储区
-    size_t metadata_size = sizeof(Header) + sizeof(SubscriberRegistry);
+    size_t metadata_size = sizeof(RingHeader) + sizeof(SubscriberRegistry);
     data_ = base + metadata_size;
     capacity_ = size - metadata_size;
     
     // 初始化头部（仅在首次创建时）
-    if (header_->magic_number != Header::MAGIC) {
-        new (header_) Header();
+    if (header_->magic_number != RingHeader::MAGIC) {
+        new (header_) RingHeader();
         header_->capacity = capacity_;
         header_->data_offset = metadata_size;
         
@@ -40,44 +39,49 @@ RingBuffer::RingBuffer(void* buffer, size_t size, sem_t* sem) : sem_(sem) {
     }
 }
 
-bool RingBuffer::publish_message(const Message& message) {
-    size_t total_size = calculate_message_total_size(message.header.data_size);
+bool RingBuffer::publish_message(const void* data, size_t size) {
+    size_t total_size = calculate_message_total_size(size);
     
     if (!can_write(total_size)) {
         return false;
     }
     
-    // 原子性地获取并更新写入位置
-    size_t write_pos = header_->write_pos.fetch_add(total_size, std::memory_order_acq_rel);
-    size_t actual_pos = write_pos % capacity_;
-    
-    // 处理环形缓冲区边界情况
-    if (actual_pos + total_size > capacity_) {
-        // 消息跨越缓冲区边界，需要回绕到开头
-        actual_pos = 0;
-        header_->write_pos.store(total_size, std::memory_order_release);
-    }
+    // 当前需要写入的位置 to_write_pos
+    size_t to_write_pos = header_->write_pos.load(std::memory_order_acquire) % capacity_;
     
     // 在缓冲区中构造消息
-    Message* buffer_msg = reinterpret_cast<Message*>(data_ + actual_pos);
+    Message* buffer_msg = reinterpret_cast<Message*>(data_ + to_write_pos);
     
     // 复制消息头部并设置序列号和时间戳
-    buffer_msg->header = message.header;
+    buffer_msg->header = MessageHeader();
     buffer_msg->header.sequence = header_->current_sequence.fetch_add(1, std::memory_order_acq_rel) + 1;
-    buffer_msg->header.set_timestamp();
     
-    // 复制数据（如果有）
-    if (message.header.data_size > 0 && message.get_data() != nullptr) {
+    // 写入数据（如有）
+    if (data != nullptr) {
+        buffer_msg->header.data_size = size;
         void* buffer_data = reinterpret_cast<char*>(buffer_msg) + sizeof(Message);
-        std::memcpy(buffer_data, message.get_data(), message.header.data_size);
+        std::memcpy(buffer_data, data, size);
         buffer_msg->set_data(buffer_data);
-        
-        // 设置校验和
-        buffer_msg->header.set_checksum(buffer_data, message.header.data_size);
     } else {
+        // 设置消息长度为0
+        buffer_msg->header.data_size = 0;
         buffer_msg->set_data(nullptr);
-        buffer_msg->header.checksum = 0;
     }
+
+    // 更新消息时戳和校验和
+    buffer_msg->update();
+
+    // 对齐到 ALIGNMENT
+    size_t new_write_pos = (to_write_pos + total_size) % capacity_;
+    // 确保新的写入位置对齐到ALIGNMENT边界
+    new_write_pos = (new_write_pos + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
+    if (new_write_pos >= capacity_) {
+        new_write_pos = 0; // 回绕到缓冲区开始
+    }
+    
+    // 更新当前序列号和写入位置
+    header_->current_sequence.store(buffer_msg->header.sequence, std::memory_order_release);
+    header_->write_pos.store(new_write_pos, std::memory_order_release);
     
     // 内存屏障确保消息完全写入后再通知
     std::atomic_thread_fence(std::memory_order_release);
@@ -88,8 +92,11 @@ bool RingBuffer::publish_message(const Message& message) {
     return true;
 }
 
-bool RingBuffer::read_next(uint64_t current_sequence, size_t current_position, Message*& out_message, uint64_t& out_sequence, size_t& out_position) {
-    uint64_t next_expected_sequence = current_sequence + 1;
+bool RingBuffer::read_expected(SubscriberState* subscriber, Message*& out_message, uint64_t next_expected_sequence) {
+    if (subscriber == nullptr) {
+        return false;
+    }
+    
     uint64_t buffer_current_seq = header_->current_sequence.load(std::memory_order_acquire);
     
     // 检查是否有新消息
@@ -97,25 +104,8 @@ bool RingBuffer::read_next(uint64_t current_sequence, size_t current_position, M
         return false;
     }
     
-    // 从当前位置的下一个位置开始搜索
-    size_t start_pos = current_position;
-    if (current_sequence > 0) {
-        // 计算下一个消息的起始位置
-        Message* current_msg = read_message_at(current_position);
-        if (current_msg != nullptr && validate_message(current_msg)) {
-            size_t current_msg_size = calculate_message_total_size(current_msg->header.data_size);
-            start_pos = (current_position + current_msg_size) % capacity_;
-        } else {
-            // 如果当前位置无效，从头开始搜索
-            start_pos = 0;
-        }
-    } else {
-        // 第一次读取，从头开始
-        start_pos = 0;
-    }
-    
     // 从起始位置开始搜索期望的消息
-    size_t search_pos = start_pos;
+    size_t search_pos = subscriber->read_pos;
     for (size_t i = 0; i < capacity_; i += ALIGNMENT) {
         Message* msg = read_message_at(search_pos);
         
@@ -123,62 +113,73 @@ bool RingBuffer::read_next(uint64_t current_sequence, size_t current_position, M
             // 检查序列号是否匹配期望值
             if (msg->header.sequence == next_expected_sequence) {
                 out_message = msg;
-                out_sequence = msg->header.sequence;
-                out_position = search_pos;
+                subscriber->last_read_sequence = msg->header.sequence;
+                subscriber->read_pos = search_pos;
                 return true;
+            } else {
+                search_pos = (search_pos + msg->msg_size()) % capacity_;
+                // 对齐到ALIGNMENT边界
+                search_pos = (search_pos + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
             }
-        }
-        
-        search_pos = (search_pos + ALIGNMENT) % capacity_;
+        } else {
+            search_pos = (search_pos + ALIGNMENT) % capacity_;
+        }        
     }
     
     return false;
 }
 
-uint64_t RingBuffer::get_unread_count(uint64_t current_sequence) {
+bool RingBuffer::read_next(SubscriberState* subscriber, Message*& out_message) {
+    return read_expected(subscriber, out_message, subscriber->last_read_sequence + 1);
+}
+
+uint64_t RingBuffer::get_unread_count(SubscriberState* subscriber) {
+    if (subscriber == nullptr) {
+        return 0;
+    }
+
     uint64_t buffer_current_seq = header_->current_sequence.load(std::memory_order_acquire);
     
     // 如果缓冲区当前序号小于等于已读序号，说明没有未读消息
-    if (buffer_current_seq <= current_sequence) {
+    if (buffer_current_seq <= subscriber->last_read_sequence) {
         return 0;
     }
     
     // 计算未读消息数量
-    return buffer_current_seq - current_sequence;
+    return buffer_current_seq - subscriber->last_read_sequence;
 }
 
-bool RingBuffer::read_latest(uint64_t current_sequence, Message*& out_message, uint64_t& out_sequence, size_t& out_position) {
-    uint64_t buffer_current_seq = header_->current_sequence.load(std::memory_order_acquire);
-    
-    // 检查是否有比当前序号更新的消息
-    if (buffer_current_seq <= current_sequence) {
-        return false;
-    }
-    
-    // 从最新位置向前搜索
-    size_t write_pos = header_->write_pos.load(std::memory_order_acquire);
-    size_t search_pos = (write_pos > 0) ? write_pos - 1 : capacity_ - 1;
-    
-    // 向前搜索最新的有效消息
-    for (size_t i = 0; i < capacity_; ++i) {
-        Message* msg = read_message_at(search_pos);
-        if (msg != nullptr && validate_message(msg)) {
-            out_message = msg;
-            out_sequence = msg->header.sequence;
-            out_position = search_pos;
-            return true;
+bool RingBuffer::read_latest(SubscriberState* subscriber, Message*& out_message) {
+    return read_expected(subscriber, out_message, header_->current_sequence.load(std::memory_order_acquire));
+}
+
+bool RingBuffer::set_publisher(uint64_t publisher_id, const std::string& publisher_name) {
+    // 检查是否已存在
+    for (uint32_t i = 0; i < registry_->count.load(std::memory_order_acquire); ++i) {
+        if (registry_->subscribers[i].subscriber_id == publisher_id) {
+            return false;
         }
-        
-        search_pos = (search_pos > 0) ? search_pos - 1 : capacity_ - 1;
     }
-    
-    return false;
+
+    // 添加新发布者
+    header_->publisher_id = publisher_id;
+    // 复制发布者名称，确保不超过缓冲区大小
+    size_t name_len = std::min(publisher_name.length(), sizeof(header_->publisher_name) - 1);
+    std::strncpy(header_->publisher_name, publisher_name.c_str(), name_len);
+    header_->publisher_name[name_len] = '\0';
+
+    return true;
 }
 
-bool RingBuffer::register_subscriber(uint64_t subscriber_id) {
+void RingBuffer::remove_publisher() {
+    header_->publisher_id = 0;
+    header_->publisher_name[0] = '\0';
+}
+
+SubscriberState* RingBuffer::register_subscriber(uint64_t subscriber_id, const std::string& subscriber_name) {
     // 使用信号量保护订阅者注册
     if (sem_wait(sem_) != 0) {
-        return false;
+        return nullptr;
     }
     
     bool success = false;
@@ -187,29 +188,42 @@ bool RingBuffer::register_subscriber(uint64_t subscriber_id) {
     // 检查是否已存在
     for (uint32_t i = 0; i < count; ++i) {
         if (registry_->subscribers[i].subscriber_id == subscriber_id) {
-            registry_->subscribers[i].active.store(true, std::memory_order_release);
-            success = true;
+            return &registry_->subscribers[i];
+        }
+    }
+
+    // 查找空闲插槽
+    uint32_t free_index = count;
+    for (uint32_t i = 0; i < count; ++i) {
+        if (registry_->subscribers[i].subscriber_id == 0) {
+            free_index = i;
             break;
         }
     }
     
     // 添加新订阅者
     if (!success && count < SubscriberRegistry::MAX_SUBSCRIBERS) {
-        SubscriberState& new_sub = registry_->subscribers[count];
+        SubscriberState& new_sub = registry_->subscribers[free_index];
         new_sub.subscriber_id = subscriber_id;
+        
+        // 复制订阅者名称，确保不超过缓冲区大小
+        size_t name_len = std::min(subscriber_name.length(), sizeof(new_sub.subscriber_name) - 1);
+        std::strncpy(new_sub.subscriber_name, subscriber_name.c_str(), name_len);
+        new_sub.subscriber_name[name_len] = '\0';
+        
+        new_sub.read_pos.store(0, std::memory_order_release);
         new_sub.last_read_sequence.store(0, std::memory_order_release);
-        new_sub.next_expected_sequence.store(1, std::memory_order_release);
-        new_sub.active.store(true, std::memory_order_release);
+        new_sub.timestamp.store(0, std::memory_order_release);
         
         registry_->count.store(count + 1, std::memory_order_release);
         success = true;
     }
     
     sem_post(sem_);
-    return success;
+    return success ? &registry_->subscribers[free_index] : nullptr;
 }
 
-void RingBuffer::unregister_subscriber(uint64_t subscriber_id) {
+void RingBuffer::unregister_subscriber(SubscriberState* subscriber) {
     // 使用信号量保护订阅者注销
     if (sem_wait(sem_) != 0) {
         return;
@@ -217,59 +231,28 @@ void RingBuffer::unregister_subscriber(uint64_t subscriber_id) {
     
     uint32_t count = registry_->count.load(std::memory_order_acquire);
     for (uint32_t i = 0; i < count; ++i) {
-        if (registry_->subscribers[i].subscriber_id == subscriber_id) {
-            registry_->subscribers[i].active.store(false, std::memory_order_release);
+        if (registry_->subscribers[i].subscriber_id == subscriber->subscriber_id) {
+            registry_->subscribers[i].subscriber_id = 0;
+            registry_->subscribers[i].read_pos.store(0, std::memory_order_release);
+            registry_->subscribers[i].last_read_sequence.store(0, std::memory_order_release);
+            registry_->subscribers[i].timestamp.store(0, std::memory_order_release);
             break;
         }
     }
     
+    registry_->count.store(count - 1, std::memory_order_release);
     sem_post(sem_);
 }
 
-uint32_t RingBuffer::skip_corrupted_messages(uint64_t subscriber_id) {
-    SubscriberState* state = find_subscriber(subscriber_id);
-    if (state == nullptr || !state->active.load(std::memory_order_acquire)) {
-        return 0;
-    }
-    
-    uint32_t skipped = 0;
-    size_t search_pos = 0;
-    size_t found_pos;
-    
-    // 从当前位置开始搜索有效消息
-    while (find_next_valid_message(search_pos, found_pos)) {
-        Message* msg = read_message_at(found_pos);
-        if (msg != nullptr && validate_message(msg)) {
-            // 找到有效消息，更新订阅者状态
-            uint64_t expected_seq = state->next_expected_sequence.load(std::memory_order_acquire);
-            if (msg->header.sequence > expected_seq) {
-                skipped = msg->header.sequence - expected_seq;
-            }
-            
-            state->next_expected_sequence.store(msg->header.sequence, std::memory_order_release);
-            break;
-        }
-        
-        search_pos = found_pos + 1;
-        if (search_pos >= capacity_) {
-            search_pos = 0;
-        }
-        ++skipped;
-    }
-    
-    return skipped;
-}
-
-bool RingBuffer::wait_for_message(uint64_t subscriber_id, uint32_t timeout_ms) {
-    SubscriberState* state = find_subscriber(subscriber_id);
-    if (state == nullptr || !state->active.load(std::memory_order_acquire)) {
+bool RingBuffer::wait_for_message(SubscriberState* subscriber, uint32_t timeout_ms) {
+    if (subscriber == nullptr) {
         return false;
     }
     
     uint32_t current_notification = header_->notification_count.load(std::memory_order_acquire);
     
     // 检查是否已有新消息
-    uint64_t expected_seq = state->next_expected_sequence.load(std::memory_order_acquire);
+    uint64_t expected_seq = subscriber->last_read_sequence.load(std::memory_order_acquire) + 1;
     uint64_t current_seq = header_->current_sequence.load(std::memory_order_acquire);
     
     if (current_seq >= expected_seq) {
@@ -280,11 +263,28 @@ bool RingBuffer::wait_for_message(uint64_t subscriber_id, uint32_t timeout_ms) {
     return futex_wait(reinterpret_cast<volatile uint32_t*>(&header_->notification_count), current_notification, timeout_ms) == 0;
 }
 
+bool RingBuffer::empty() const {
+    return header_->current_sequence.load(std::memory_order_acquire) == 0;
+}
+
+bool RingBuffer::full() const {
+    // 缓冲区可以被覆盖，所以永远不会满
+    return false;
+}
+
+size_t RingBuffer::available_space() const {
+    // 总是有空间可写（通过覆盖实现）
+    return capacity_;
+}
+
+size_t RingBuffer::available_data() const {
+    return header_->current_sequence.load(std::memory_order_acquire);
+}
+
 RingBuffer::Statistics RingBuffer::get_statistics() const {
     Statistics stats;
     stats.current_sequence = header_->current_sequence.load(std::memory_order_acquire);
     stats.total_messages = stats.current_sequence;
-    stats.corrupted_messages = header_->corrupted_count.load(std::memory_order_acquire);
     
     // 计算可用空间
     size_t write_pos = header_->write_pos.load(std::memory_order_acquire);
@@ -294,8 +294,18 @@ RingBuffer::Statistics RingBuffer::get_statistics() const {
     uint32_t count = registry_->count.load(std::memory_order_acquire);
     stats.active_subscribers = 0;
     for (uint32_t i = 0; i < count; ++i) {
-        if (registry_->subscribers[i].active.load(std::memory_order_acquire)) {
+        if (registry_->subscribers[i].subscriber_id != 0) {
             ++stats.active_subscribers;
+        }
+    }
+
+    // 收集订阅者名称和ID
+    stats.subscribers.clear();
+    for (uint32_t i = 0; i < count; ++i) {
+        if (registry_->subscribers[i].subscriber_id != 0) {
+            stats.subscribers.push_back({
+                registry_->subscribers[i].subscriber_id, 
+                registry_->subscribers[i].subscriber_name});
         }
     }
     
@@ -334,12 +344,7 @@ bool RingBuffer::validate_message(const Message* message) const {
         return false;
     }
     
-    // 验证魔数
-    if (message->header.magic != MessageHeader::MAGIC_NUMBER) {
-        return false;
-    }
-    
-    // 验证校验和（使用Message的is_valid方法）
+    // 验证Message
     if (!message->is_valid()) {
         return false;
     }
@@ -390,10 +395,10 @@ int RingBuffer::futex_wake(volatile uint32_t* addr, uint32_t count) {
 }
 
 size_t RingBuffer::calculate_message_total_size(size_t data_size) {
-    size_t total = sizeof(Message) + data_size;
+    size_t total = Message::total_size(data_size);
     // 对齐到ALIGNMENT边界
     return (total + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
 }
 
-} // namespace Core
-} // namespace MB_DDS
+} // namespace DDS
+} // namespace MB_DDF
