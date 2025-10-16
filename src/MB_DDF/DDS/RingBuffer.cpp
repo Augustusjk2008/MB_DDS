@@ -64,13 +64,11 @@ bool RingBuffer::publish_message(const void* data, size_t size) {
     // 写入数据（如有）
     if (data != nullptr) {
         buffer_msg->header.data_size = size;
-        void* buffer_data = reinterpret_cast<char*>(buffer_msg) + sizeof(Message);
+        void* buffer_data = buffer_msg->get_data();
         std::memcpy(buffer_data, data, size);
-        buffer_msg->set_data(buffer_data);
     } else {
         // 设置消息长度为0
         buffer_msg->header.data_size = 0;
-        buffer_msg->set_data(nullptr);
     }
 
     // 更新消息时戳和校验和

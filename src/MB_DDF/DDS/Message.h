@@ -114,19 +114,18 @@ struct alignas(8) MessageHeader {
 
 /**
  * @struct Message
- * @brief 完整的消息结构，包含消息头和数据指针
+ * @brief 完整的消息结构
  * 
- * 采用头数据分离的设计，消息头和数据可以分别存储在不同的内存区域。
+ * 采用头数据分离的设计。
  * 适用于共享内存场景，避免大块数据的拷贝操作。
  */
 struct alignas(8) Message {
     MessageHeader header;     ///< 消息头
-    void* data_ptr;          ///< 数据指针，指向实际数据位置
     
     /**
      * @brief 默认构造函数
      */
-    Message() : data_ptr(nullptr) {}
+    Message() {}
     
     /**
      * @brief 构造函数，初始化消息头和数据指针
@@ -135,8 +134,7 @@ struct alignas(8) Message {
      * @param data 数据指针
      * @param data_size 数据大小
      */
-    Message(uint32_t topic_id, uint64_t sequence, void* data, uint32_t data_size) 
-        : data_ptr(data) {
+    Message(uint32_t topic_id, uint64_t sequence, void* data, uint32_t data_size) {
         header.topic_id = topic_id;
         header.sequence = sequence;
         header.data_size = data_size;
@@ -175,25 +173,13 @@ struct alignas(8) Message {
      * @brief 获取数据部分的可写指针
      * @return 数据部分指针
      */
-    void* get_data() { return data_ptr; }
+    void* get_data() { return reinterpret_cast<char*>(this) + sizeof(Message); }
     
     /**
      * @brief 获取数据部分的只读指针
      * @return 数据部分常量指针
      */
-    const void* get_data() const { return data_ptr; }
-    
-    /**
-     * @brief 设置数据指针
-     * @param ptr 指向数据的指针
-     */
-    void set_data(void* ptr) { 
-        data_ptr = ptr; 
-        // 如果设置了新的数据指针，重新计算校验和
-        if (ptr && header.data_size > 0) {
-            header.set_checksum(ptr, header.data_size);
-        }
-    }
+    const void* get_data() const { return reinterpret_cast<const char*>(this) + sizeof(Message); }
     
     /**
      * @brief 验证消息的完整性
@@ -203,10 +189,10 @@ struct alignas(8) Message {
         if (!header.is_valid()) {
             return false;
         }
-        if (data_ptr) {
-            return header.verify_checksum();
+        if (header.data_size > 0) {
+            return header.verify_checksum(get_data(), header.data_size);
         }
-        return header.data_size == 0; // 空数据消息也是有效的
+        return true; // 空数据消息也是有效的
     }
     
     /**
@@ -214,9 +200,7 @@ struct alignas(8) Message {
      */
     void update() {
         header.set_timestamp();
-        if (data_ptr && header.data_size > 0) {
-            header.set_checksum(data_ptr, header.data_size);
-        }
+        header.set_checksum(get_data(), header.data_size);
     }
 };
 
