@@ -8,7 +8,9 @@
  * 基于共享内存和无锁环形缓冲区实现高性能的进程间通信。
  */
 
-#include "DDSCore.h"
+#include "MB_DDF/DDS/DDSCore.h"
+#include "MB_DDF/Debug/Logger.h"
+
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -25,15 +27,18 @@ std::shared_ptr<Publisher> DDSCore::create_publisher(const std::string& topic_na
     // 创建或获取环形缓冲区
     RingBuffer* buffer = create_or_get_topic_buffer(topic_name);
     if (buffer == nullptr) {
+        LOG_ERROR << "failed to create or get topic buffer, topic name: " << topic_name;
         return nullptr; // 未找到匹配的环形缓冲区
     }
 
     // 查找TopicMetadata
     TopicMetadata* metadata = find_topic(topic_name);
     if (metadata == nullptr) {
+        LOG_ERROR << "failed to find topic metadata, topic name: " << topic_name;
         return nullptr; // 未找到匹配的TopicMetadata
     }
     
+    LOG_INFO << "created publisher, topic name: " << topic_name;
     return std::make_shared<Publisher>(metadata, buffer, process_name_);
 }
 
@@ -45,15 +50,18 @@ std::shared_ptr<Subscriber> DDSCore::create_subscriber(const std::string& topic_
     // 创建或获取环形缓冲区
     RingBuffer* buffer = create_or_get_topic_buffer(topic_name);
     if (buffer == nullptr) {
+        LOG_ERROR << "failed to create or get topic buffer, topic name: " << topic_name;
         return nullptr; // 未找到匹配的环形缓冲区
     }
 
     // 查找TopicMetadata
     TopicMetadata* metadata = find_topic(topic_name);
     if (metadata == nullptr) {
+        LOG_ERROR << "failed to find topic metadata, topic name: " << topic_name;
         return nullptr; // 未找到匹配的TopicMetadata
     }
     
+    LOG_INFO << "created subscriber, topic name: " << topic_name;
     std::shared_ptr<Subscriber> subscriber = std::make_shared<Subscriber>(metadata, buffer, process_name_);
     subscriber->subscribe(callback);
     return subscriber;
@@ -74,12 +82,13 @@ size_t DDSCore::data_read(std::shared_ptr<Subscriber> subscriber, void* data, si
 bool DDSCore::initialize(size_t shared_memory_size) {
     // 检查是否已经初始化
     if (initialized_) {
+        LOG_WARN << "already initialized, shared memory size: " << shm_manager_->get_size();
         return true; // 已经初始化，直接返回成功
     }
     
     // 参数验证
     if (shared_memory_size < 1024 * 1024) { // 最小1MB
-        std::cerr << "DDSCore::initialize: shared_memory_size too small (minimum 1MB)" << std::endl;
+        LOG_ERROR << "Shared_memory_size too small (minimum 1MB), size: " << shared_memory_size;
         return false;
     }
     
@@ -89,10 +98,11 @@ bool DDSCore::initialize(size_t shared_memory_size) {
         
         // 检查共享内存是否创建成功
         if (!shm_manager_ || !shm_manager_->get_address()) {
-            std::cerr << "DDSCore::initialize: Failed to create shared memory manager" << std::endl;
+            LOG_ERROR << "Failed to create shared memory manager";
             shm_manager_.reset();
             return false;
         }
+        LOG_DEBUG << "Shared memory created, size: " << shm_manager_->get_size();
         
         // 2. 创建Topic注册表
         topic_registry_ = std::make_unique<TopicRegistry>(
@@ -100,32 +110,34 @@ bool DDSCore::initialize(size_t shared_memory_size) {
             shm_manager_->get_size(), 
             shm_manager_.get()
         );
+        LOG_DEBUG << "topic registry created";
         
         // 检查Topic注册表是否创建成功
         if (!topic_registry_) {
-            std::cerr << "DDSCore::initialize: Failed to create topic registry" << std::endl;
+            LOG_ERROR << "Failed to create topic registry";
             shm_manager_.reset();
             return false;
         }
+        LOG_DEBUG << "topic registry initialized";
         
         // 3. 初始化其他成员变量
         topic_buffers_.clear();
         process_name_ = get_process_name();
         initialized_ = true;
-        
-        std::cout << "DDSCore initialized successfully with " << shared_memory_size << " bytes shared memory" << std::endl;
+
+        LOG_INFO << "DDSCore initialized successfully with " << shared_memory_size << " bytes shared memory";
         return true;
         
     } catch (const std::exception& e) {
         // 清理已分配的资源
-        std::cerr << "DDSCore::initialize: Exception occurred: " << e.what() << std::endl;
+        LOG_ERROR << "Exception occurred: " << e.what();
         topic_registry_.reset();
         shm_manager_.reset();
         initialized_ = false;
         return false;
     } catch (...) {
         // 捕获所有其他异常
-        std::cerr << "DDSCore::initialize: Unknown exception occurred" << std::endl;
+        LOG_ERROR << "Unknown exception occurred";
         topic_registry_.reset();
         shm_manager_.reset();
         initialized_ = false;
@@ -141,14 +153,14 @@ RingBuffer* DDSCore::create_or_get_topic_buffer(const std::string& topic_name) {
     
     // 验证topic名称
     if (!topic_registry_->is_valid_topic_name(topic_name)) {
-        std::cerr << "DDSCore::get_or_create_topic_buffer: Invalid topic name: " << topic_name << std::endl;
+        LOG_ERROR << "Invalid topic name: " << topic_name;
         return nullptr;
     }
     
     // 使用互斥锁保护topic_buffers_的访问
     std::lock_guard<std::mutex> lock(topic_buffers_mutex_);
     
-    // 1. 首先尝试从TopicRegistry获取已存在的Topic元数据
+    // 首先尝试从TopicRegistry获取已存在的Topic元数据
     TopicMetadata* metadata = topic_registry_->get_topic_metadata(topic_name);
     
     if (metadata != nullptr) {
@@ -156,6 +168,7 @@ RingBuffer* DDSCore::create_or_get_topic_buffer(const std::string& topic_name) {
         auto it = topic_buffers_.find(metadata);
         if (it != topic_buffers_.end()) {
             // RingBuffer已存在，直接返回
+            LOG_DEBUG << "Retrieved existing RingBuffer for topic: " << topic_name;
             return it->second.get();
         } else {
             // Topic存在但RingBuffer未创建，需要创建RingBuffer
@@ -173,12 +186,12 @@ RingBuffer* DDSCore::create_or_get_topic_buffer(const std::string& topic_name) {
                 // 将RingBuffer添加到映射中
                 RingBuffer* buffer_ptr = ring_buffer.get();
                 topic_buffers_[metadata] = std::move(ring_buffer);
-                
+                LOG_DEBUG << "Created RingBuffer for existing topic: " << topic_name;
                 return buffer_ptr;
-                
+                                
             } catch (const std::exception& e) {
-                std::cerr << "DDSCore::get_or_create_topic_buffer: Failed to create RingBuffer for existing topic: " 
-                         << e.what() << std::endl;
+                LOG_ERROR << "Failed to create RingBuffer for existing topic: " 
+                         << e.what();
                 return nullptr;
             }
         }
@@ -191,7 +204,7 @@ RingBuffer* DDSCore::create_or_get_topic_buffer(const std::string& topic_name) {
             // 在TopicRegistry中注册新的Topic
             metadata = topic_registry_->register_topic(topic_name, ring_buffer_size);
             if (!metadata) {
-                std::cerr << "DDSCore::get_or_create_topic_buffer: Failed to register new topic: " << topic_name << std::endl;
+                LOG_ERROR << "Failed to register new topic: " << topic_name;
                 return nullptr;
             }
             
@@ -208,14 +221,13 @@ RingBuffer* DDSCore::create_or_get_topic_buffer(const std::string& topic_name) {
             // 将RingBuffer添加到映射中
             RingBuffer* buffer_ptr = ring_buffer.get();
             topic_buffers_[metadata] = std::move(ring_buffer);
-            
-            std::cout << "DDSCore::get_or_create_topic_buffer: Created new topic '" << topic_name 
-                     << "' with " << ring_buffer_size << " bytes ring buffer" << std::endl;
+            LOG_DEBUG << "Created new topic '" << topic_name 
+                     << "' with " << ring_buffer_size << " bytes ring buffer";
             
             return buffer_ptr;
             
         } catch (const std::exception& e) {
-            std::cerr << "DDSCore::get_or_create_topic_buffer: Failed to create new topic: " 
+            LOG_ERROR << "Failed to create new topic: " 
                      << e.what() << std::endl;
             return nullptr;
         }

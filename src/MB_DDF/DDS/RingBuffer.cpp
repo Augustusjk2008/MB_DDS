@@ -5,7 +5,8 @@
  * @author Jiangkai
  */
 
-#include "RingBuffer.h"
+#include "MB_DDF/DDS/RingBuffer.h"
+#include "MB_DDF/Debug/Logger.h"
 #include <cstring>
 #include <semaphore.h>
 #include <sys/time.h>
@@ -16,6 +17,7 @@ namespace DDS {
 RingBuffer::RingBuffer(void* buffer, size_t size, sem_t* sem) : sem_(sem) {
     // 计算各部分在共享内存中的布局
     char* base = static_cast<char*>(buffer);
+    LOG_DEBUG << "RingBuffer buffer address: " << (void*)base;
     
     // 头部结构
     header_ = reinterpret_cast<RingHeader*>(base);
@@ -37,12 +39,15 @@ RingBuffer::RingBuffer(void* buffer, size_t size, sem_t* sem) : sem_(sem) {
         // 初始化订阅者注册表
         new (registry_) SubscriberRegistry();
     }
+
+    LOG_DEBUG << "RingBuffer created with capacity " << capacity_ << " and data offset " << header_->data_offset;
 }
 
 bool RingBuffer::publish_message(const void* data, size_t size) {
     size_t total_size = calculate_message_total_size(size);
     
     if (!can_write(total_size)) {
+        LOG_ERROR << "publish_message failed, not enough space";
         return false;
     }
     
@@ -89,11 +94,13 @@ bool RingBuffer::publish_message(const void* data, size_t size) {
     // 通知订阅者
     notify_subscribers();
     
+    LOG_DEBUG << "publish_message " << buffer_msg->header.sequence << " with size " << size;
     return true;
 }
 
 bool RingBuffer::read_expected(SubscriberState* subscriber, Message*& out_message, uint64_t next_expected_sequence) {
     if (subscriber == nullptr) {
+        LOG_ERROR << "read_expected failed, subscriber is nullptr";
         return false;
     }
     
@@ -101,6 +108,7 @@ bool RingBuffer::read_expected(SubscriberState* subscriber, Message*& out_messag
     
     // 检查是否有新消息
     if (next_expected_sequence > buffer_current_seq) {
+        LOG_DEBUG << "read_expected failed, next_expected_sequence " << next_expected_sequence << " > buffer_current_seq " << buffer_current_seq;
         return false;
     }
     
@@ -126,6 +134,7 @@ bool RingBuffer::read_expected(SubscriberState* subscriber, Message*& out_messag
         }        
     }
     
+    LOG_DEBUG << "read_expected failed, next_expected_sequence " << next_expected_sequence << " not found";
     return false;
 }
 
@@ -135,6 +144,7 @@ bool RingBuffer::read_next(SubscriberState* subscriber, Message*& out_message) {
 
 uint64_t RingBuffer::get_unread_count(SubscriberState* subscriber) {
     if (subscriber == nullptr) {
+        LOG_ERROR << "get_unread_count failed, subscriber is nullptr";
         return 0;
     }
 
@@ -142,11 +152,14 @@ uint64_t RingBuffer::get_unread_count(SubscriberState* subscriber) {
     
     // 如果缓冲区当前序号小于等于已读序号，说明没有未读消息
     if (buffer_current_seq <= subscriber->last_read_sequence) {
+        LOG_DEBUG << "get_unread_count failed, buffer_current_seq " << buffer_current_seq << " <= last_read_sequence " << subscriber->last_read_sequence;
         return 0;
     }
     
     // 计算未读消息数量
-    return buffer_current_seq - subscriber->last_read_sequence;
+    uint64_t unread_count = buffer_current_seq - subscriber->last_read_sequence;
+    LOG_INFO << "get_unread_count " << unread_count;
+    return unread_count;
 }
 
 bool RingBuffer::read_latest(SubscriberState* subscriber, Message*& out_message) {
@@ -155,10 +168,9 @@ bool RingBuffer::read_latest(SubscriberState* subscriber, Message*& out_message)
 
 bool RingBuffer::set_publisher(uint64_t publisher_id, const std::string& publisher_name) {
     // 检查是否已存在
-    for (uint32_t i = 0; i < registry_->count.load(std::memory_order_acquire); ++i) {
-        if (registry_->subscribers[i].subscriber_id == publisher_id) {
-            return false;
-        }
+    if (header_->publisher_id != 0) {
+        LOG_ERROR << "set_publisher failed, publisher_id " << publisher_id << " already registered";
+        return false;
     }
 
     // 添加新发布者
@@ -168,37 +180,48 @@ bool RingBuffer::set_publisher(uint64_t publisher_id, const std::string& publish
     std::strncpy(header_->publisher_name, publisher_name.c_str(), name_len);
     header_->publisher_name[name_len] = '\0';
 
+    LOG_INFO << "set_publisher " << publisher_id << " " << publisher_name;
     return true;
 }
 
 void RingBuffer::remove_publisher() {
     header_->publisher_id = 0;
     header_->publisher_name[0] = '\0';
+    LOG_INFO << "remove_publisher";
 }
 
 SubscriberState* RingBuffer::register_subscriber(uint64_t subscriber_id, const std::string& subscriber_name) {
     // 使用信号量保护订阅者注册
     if (sem_wait(sem_) != 0) {
+        LOG_ERROR << "register_subscriber failed, sem_wait failed";
         return nullptr;
     }
     
     bool success = false;
     uint32_t count = registry_->count.load(std::memory_order_acquire);
+    LOG_DEBUG << "register_subscriber count " << count;
     
     // 检查是否已存在
     for (uint32_t i = 0; i < count; ++i) {
         if (registry_->subscribers[i].subscriber_id == subscriber_id) {
+            LOG_ERROR << "register_subscriber failed, subscriber_id " << subscriber_id << " already registered";
             return &registry_->subscribers[i];
         }
     }
 
     // 查找空闲插槽
-    uint32_t free_index = count;
-    for (uint32_t i = 0; i < count; ++i) {
+    uint32_t free_index = 0;
+    for (uint32_t i = 0; i < SubscriberRegistry::MAX_SUBSCRIBERS; ++i) {
         if (registry_->subscribers[i].subscriber_id == 0) {
             free_index = i;
             break;
         }
+    }
+
+    // 是否有空闲插槽
+    if (free_index == SubscriberRegistry::MAX_SUBSCRIBERS) {
+        LOG_ERROR << "register_subscriber failed, no free subscriber slot";
+        return nullptr;
     }
     
     // 添加新订阅者
@@ -217,6 +240,7 @@ SubscriberState* RingBuffer::register_subscriber(uint64_t subscriber_id, const s
         
         registry_->count.store(count + 1, std::memory_order_release);
         success = true;
+        LOG_DEBUG << "register_subscriber " << subscriber_id << " " << subscriber_name;
     }
     
     sem_post(sem_);
@@ -226,6 +250,7 @@ SubscriberState* RingBuffer::register_subscriber(uint64_t subscriber_id, const s
 void RingBuffer::unregister_subscriber(SubscriberState* subscriber) {
     // 使用信号量保护订阅者注销
     if (sem_wait(sem_) != 0) {
+        LOG_ERROR << "unregister_subscriber failed, sem_wait failed";
         return;
     }
     
@@ -236,6 +261,7 @@ void RingBuffer::unregister_subscriber(SubscriberState* subscriber) {
             registry_->subscribers[i].read_pos.store(0, std::memory_order_release);
             registry_->subscribers[i].last_read_sequence.store(0, std::memory_order_release);
             registry_->subscribers[i].timestamp.store(0, std::memory_order_release);
+            LOG_INFO << "unregister_subscriber " << subscriber->subscriber_id << " " << registry_->subscribers[i].subscriber_name;
             break;
         }
     }
@@ -246,6 +272,7 @@ void RingBuffer::unregister_subscriber(SubscriberState* subscriber) {
 
 bool RingBuffer::wait_for_message(SubscriberState* subscriber, uint32_t timeout_ms) {
     if (subscriber == nullptr) {
+        LOG_ERROR << "wait_for_message failed, subscriber is nullptr";
         return false;
     }
     
@@ -256,10 +283,12 @@ bool RingBuffer::wait_for_message(SubscriberState* subscriber, uint32_t timeout_
     uint64_t current_seq = header_->current_sequence.load(std::memory_order_acquire);
     
     if (current_seq >= expected_seq) {
+        LOG_INFO << "wait_for_message " << subscriber->subscriber_id << " " << current_seq << " " << expected_seq;
         return true;
     }
     
     // 使用futex等待通知
+    LOG_DEBUG << current_seq << " wait_for_message " << expected_seq << " time_out " << timeout_ms;
     return futex_wait(reinterpret_cast<volatile uint32_t*>(&header_->notification_count), current_notification, timeout_ms) == 0;
 }
 
@@ -368,6 +397,7 @@ bool RingBuffer::find_next_valid_message(size_t start_pos, size_t& out_pos) cons
         }
     }
     
+    LOG_DEBUG << "find_next_valid_message failed, no valid message found";
     return false;
 }
 

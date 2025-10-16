@@ -10,11 +10,11 @@
 
 #pragma once
 
-#include "TopicRegistry.h" // Topic注册表管理
-#include "SharedMemory.h" // 共享内存管理器
-#include "RingBuffer.h" // 环形缓冲区
-#include "Publisher.h" // 发布者
-#include "Subscriber.h" // 订阅者
+#include "MB_DDF/DDS/TopicRegistry.h" // Topic注册表管理
+#include "MB_DDF/DDS/SharedMemory.h" // 共享内存管理器
+#include "MB_DDF/DDS/RingBuffer.h" // 环形缓冲区
+#include "MB_DDF/DDS/Publisher.h" // 发布者
+#include "MB_DDF/DDS/Subscriber.h" // 订阅者
 
 #include <string>
 #include <memory>

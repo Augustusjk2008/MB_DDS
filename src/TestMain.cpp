@@ -1,15 +1,23 @@
 #include "MB_DDF/DDS/DDSCore.h"
-
-#include <iostream>
+#include "MB_DDF/Debug/Logger.h"
 
 // int main(int argc, char* argv[]) {
 // 无参数 main
 int main() {
-    MB_DDF::DDS::DDSCore& dds = MB_DDF::DDS::DDSCore::instance();
-    dds.initialize(128 * 1024 * 1024);
+    // 开启TRACE级别的日志输出
+    LOG_SET_LEVEL_TRACE();
+    // 禁用时间戳输出
+    LOG_DISABLE_TIMESTAMP();
+    // 禁用函数名和行号显示
+    // LOG_DISABLE_FUNCTION_LINE();
 
+    // 初始化DDS核心，分配共享内存
+    MB_DDF::DDS::DDSCore& dds = MB_DDF::DDS::DDSCore::instance();
+    // dds.initialize(128 * 1024 * 1024);
+
+    // 创建发布者和订阅者
     auto publisher = dds.create_publisher("local://test_topic_a");
-    auto subscriber = dds.create_reader("local://test_topic_a"
+    auto subscriber = dds.create_subscriber("local://test_topic_a"
         , [](const void* data, size_t size, uint64_t timestamp) {
             // 计算延迟
             uint64_t current_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
@@ -17,10 +25,14 @@ int main() {
 
             // 打印数据
             const char* str = static_cast<const char*>(data);
-            std::cout << "Received " << size << " bytes of data: " << str << std::endl;
-            std::cout << "Delay: " << delay / 1000.0f << " us" << std::endl;
+            LOG_INFO << "Received " << size << " bytes of data: " << str;
+            LOG_INFO << "Delay: " << delay / 1000.0f << " us";
         });
 
+    // 绑定订阅者到CPU核心5
+    subscriber->bind_to_cpu(5);
+
+    // 主循环，持续发布数据
     while (true) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         if (publisher) {

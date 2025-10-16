@@ -4,6 +4,9 @@ cmake_minimum_required(VERSION 3.10)
 # 项目名称
 project(MB_DDF_Demo LANGUAGES CXX)
 
+# 生成compile_commands.json文件供clangd使用
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # 设置默认构建类型（如果没有指定）
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose build type: Debug or Release" FORCE)
@@ -34,6 +37,13 @@ add_executable(TestMain ${SOURCES} ${HEADERS})
 # 为目标添加包含目录
 target_include_directories(TestMain PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+# 链接必要的系统库
+target_link_libraries(TestMain PRIVATE 
+    pthread 
+    rt 
 )
 
 # 设置不同构建类型的编译选项

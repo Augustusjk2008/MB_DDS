@@ -6,5 +6,11 @@
         "atomic": "cpp",
         "xlocale": "cpp",
         "xmemory": "cpp"
-    }
+    },
+    "clangd.arguments": [
+        "--compile-commands-dir=.",
+        "--background-index",
+        "--clang-tidy",
+        "--header-insertion=iwyu"
+    ]
 }

@@ -6,10 +6,10 @@
  * 
  * 实现消息订阅功能，包括异步消息接收、回调处理和线程管理。
  */
-#include "Subscriber.h"
-#include "RingBuffer.h"
-#include "Message.h"
-#include <iostream>
+#include "MB_DDF/DDS/Subscriber.h"
+#include "MB_DDF/DDS/RingBuffer.h"
+#include "MB_DDF/DDS/Message.h"
+#include "MB_DDF/Debug/Logger.h"
 #include <random>
 #include <pthread.h>
 #include <sched.h>
@@ -38,12 +38,14 @@ Subscriber::~Subscriber() {
 
 bool Subscriber::subscribe(MessageCallback callback) {
     if (subscribed_.load()) {
+        LOG_DEBUG << "Subscriber " << subscriber_id_ << " " << subscriber_name_ << " already subscribed";
         return false; // 已经订阅
     }
     
     // 在RingBuffer中注册订阅者
     subscriber_state_ = ring_buffer_->register_subscriber(subscriber_id_, subscriber_name_);
     if (!subscriber_state_) {
+        LOG_DEBUG << "Failed to register subscriber " << subscriber_id_ << " " << subscriber_name_;
         return false;
     }
     
@@ -53,20 +55,24 @@ bool Subscriber::subscribe(MessageCallback callback) {
     
     // 如需实时检测，则设置回调函数，启动工作线程
     if (callback_) {
+        LOG_DEBUG << "Subscriber " << subscriber_id_ << " " << subscriber_name_ << " subscribed with callback";
         worker_thread_ = std::thread(&Subscriber::worker_loop, this);
     }
     
+    LOG_DEBUG << "Subscriber " << subscriber_id_ << " " << subscriber_name_ << " subscribed successfully";
     return true;
 }
 
 void Subscriber::unsubscribe() {
     if (!subscribed_.load()) {
+        LOG_DEBUG << "Subscriber " << subscriber_id_ << " " << subscriber_name_ << " not subscribed";
         return;
     }
     
     // 先唤醒可能在 Futex 中阻塞的线程，防止 join 僵死
     // 此处会引起惊群效益，性能不佳，目前为折衷设计，后续可以改进为使用通知直接唤醒线程
     if (callback_) {
+        LOG_DEBUG << "Subscriber " << subscriber_id_ << " " << subscriber_name_ << " notifies subscribers";
         ring_buffer_->notify_subscribers();
     }
 
@@ -75,10 +81,12 @@ void Subscriber::unsubscribe() {
     
     if (worker_thread_.joinable()) {
         worker_thread_.join();
+        LOG_DEBUG << "Subscriber " << subscriber_id_ << " " << subscriber_name_ << " worker thread joined";
     }
     
     // 从RingBuffer中注销订阅者
     ring_buffer_->unregister_subscriber(subscriber_state_);
+    LOG_DEBUG << "Subscriber " << subscriber_id_ << " " << subscriber_name_ << " unregistered from ring buffer";
 }
 
 void Subscriber::worker_loop() {
@@ -91,20 +99,24 @@ void Subscriber::worker_loop() {
         if (ring_buffer_->get_unread_count(subscriber_state_) > 0) {
             // 从环形缓冲区读取下一条消息
             Message* msg = nullptr;
-            if (ring_buffer_->read_next(subscriber_state_, msg)) {
+            if (ring_buffer_->read_latest(subscriber_state_, msg)) {
                 received_size = msg->msg_size();
+                LOG_DEBUG << "Subscriber " << subscriber_name_ << " received message of total size: " << received_size;
             }
             
             // 解析消息
-            if (received_size >= sizeof(MessageHeader)) {                
+            if (received_size >= sizeof(MessageHeader)) {   
                 // 验证消息头是否有效
-                if (msg->is_valid()) {                    
+                if (msg->is_valid()) {    
                     // 调用回调函数
-                    if (callback_) {
+                    if (callback_) { 
+                        LOG_DEBUG << "msg->get_data(): " << msg->get_data(); 
+                        LOG_DEBUG << "msg->msg_data_size(): " << msg->msg_data_size(); 
+                        LOG_DEBUG << "msg->header.timestamp: " << msg->header.timestamp; 
                         callback_(msg->get_data(), msg->msg_data_size(), msg->header.timestamp);
                     }
-                } else {
-                    std::cerr << "Invalid message received on topic: " << metadata_->topic_name << std::endl;
+                } else {                
+                    LOG_ERROR << "Invalid message received on topic: " << metadata_->topic_name;
                 }
             }
         } else {
@@ -118,13 +130,13 @@ bool Subscriber::bind_to_cpu(int cpu_id) {
     // 获取系统CPU核心数
     int num_cpus = sysconf(_SC_NPROCESSORS_ONLN);
     if (cpu_id < 0 || cpu_id >= num_cpus) {
-        std::cerr << "Invalid CPU ID: " << cpu_id << ", available CPUs: 0-" << (num_cpus - 1) << std::endl;
+        LOG_ERROR << "Invalid CPU ID: " << cpu_id << ", available CPUs: 0-" << (num_cpus - 1);
         return false;
     }
 
     // 检查工作线程是否已启动
     if (!worker_thread_.joinable()) {
-        std::cerr << "Worker thread is not running, cannot bind to CPU" << std::endl;
+        LOG_ERROR << "Worker thread is not running, cannot bind to CPU";
         return false;
     }
 
@@ -137,11 +149,11 @@ bool Subscriber::bind_to_cpu(int cpu_id) {
     int result = pthread_setaffinity_np(thread_handle, sizeof(cpu_set_t), &cpuset);
     
     if (result != 0) {
-        std::cerr << "Failed to bind subscriber worker thread to CPU " << cpu_id << ": " << strerror(result) << std::endl;
+        LOG_ERROR << "Failed to bind subscriber worker thread to CPU " << cpu_id << ": " << strerror(result);
         return false;
     }
 
-    std::cout << "Subscriber worker thread bound to CPU " << cpu_id << std::endl;
+    LOG_DEBUG << "Subscriber worker thread bound to CPU " << cpu_id;
     return true;
 }
 

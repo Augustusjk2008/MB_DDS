@@ -8,10 +8,10 @@
  * 维护Topic元数据信息，支持多进程间的Topic发现。
  */
 
-#include "TopicRegistry.h"
-#include "SharedMemory.h"
+#include "MB_DDF/DDS/TopicRegistry.h"
+#include "MB_DDF/DDS/SharedMemory.h"
+#include "MB_DDF/Debug/Logger.h"
 #include <cstring>
-#include <iostream>
 
 namespace MB_DDF {
 namespace DDS {
@@ -27,9 +27,10 @@ TopicRegistry::TopicRegistry(void* shm_base_addr, size_t shm_size, SharedMemoryM
     // 使用信号量确保进程安全的初始化
     sem_t* sem = shm_manager_->get_semaphore();
     if (sem_wait(sem) == -1) {
-        std::cerr << "TopicRegistry error waiting for semaphore: " << strerror(errno) << std::endl;
+        LOG_ERROR << "TopicRegistry error waiting for semaphore: " << strerror(errno);
         return; // 构造函数失败
     }
+    LOG_DEBUG << "TopicRegistry semaphore acquired";
     
     // 检查魔数，判断是否需要初始化
     if (header_->magic_number != MAGIC_NUMBER) {
@@ -43,6 +44,8 @@ TopicRegistry::TopicRegistry(void* shm_base_addr, size_t shm_size, SharedMemoryM
         header_->magic_number = MAGIC_NUMBER;
         header_->next_topic_id.store(1);
         header_->topic_count.store(0);
+
+        LOG_DEBUG << "TopicRegistry initialized with magic number: " << MAGIC_NUMBER;
     }
     
     // 释放信号量
@@ -51,24 +54,29 @@ TopicRegistry::TopicRegistry(void* shm_base_addr, size_t shm_size, SharedMemoryM
     // 元数据数组位于头部之后
     metadata_array_ = reinterpret_cast<TopicMetadata*>(
         static_cast<char*>(shm_base_addr_) + METADATA_OFFSET);
+    
+    // 记录初始化日志
+    LOG_DEBUG << "TopicRegistry initialized with " << MAX_TOPICS << " slots";
 }
 
 TopicMetadata* TopicRegistry::register_topic(const std::string& name, size_t rb_size) {
     // 检查Topic名称是否合法
     if (!is_valid_topic_name(name)) {
-        std::cerr << "Invalid topic name format: " << name << std::endl;
+        LOG_ERROR << "Invalid topic name format: " << name;
         return nullptr;
     }
 
     // 使用信号量保护整个操作
     sem_t* sem = shm_manager_->get_semaphore();
     if (sem_wait(sem) == -1) {
+        LOG_ERROR << "TopicRegistry error waiting for semaphore: " << strerror(errno);
         return nullptr;
     }
     
     // 首先检查是否已经存在
     TopicMetadata* existing = get_topic_metadata(name);
     if (existing) {
+        LOG_WARN << "Topic already registered: " << name;
         sem_post(sem);
         return existing;
     }
@@ -76,7 +84,7 @@ TopicMetadata* TopicRegistry::register_topic(const std::string& name, size_t rb_
     // 原子地读取当前计数并检查是否还有空间
     uint32_t current_count = header_->topic_count.load(std::memory_order_acquire);
     if (current_count >= MAX_TOPICS) {
-        std::cerr << "Maximum number of topics reached: " << MAX_TOPICS << std::endl;
+        LOG_ERROR << "Maximum number of topics reached: " << MAX_TOPICS;
         sem_post(sem);
         return nullptr;
     }
@@ -91,14 +99,14 @@ TopicMetadata* TopicRegistry::register_topic(const std::string& name, size_t rb_
     }
     
     if (!metadata) {
-        std::cerr << "No available metadata slot found" << std::endl;
+        LOG_ERROR << "No available metadata slot found";
         sem_post(sem);
         return nullptr;
     }
     
     // 计算对齐后的RingBuffer大小和偏移量，检查溢出
     if (rb_size > SIZE_MAX - ALIGNMENT + 1) {
-        std::cerr << "Ring buffer size too large, would cause overflow: " << rb_size << std::endl;
+        LOG_ERROR << "Ring buffer size too large, would cause overflow: " << rb_size;
         sem_post(sem);
         return nullptr;
     }
@@ -111,14 +119,14 @@ TopicMetadata* TopicRegistry::register_topic(const std::string& name, size_t rb_
             size_t existing_size = metadata_array_[i].ring_buffer_size;
             // 检查对齐计算是否会溢出
             if (existing_size > SIZE_MAX - ALIGNMENT + 1) {
-                std::cerr << "Existing ring buffer size would cause overflow: " << existing_size << std::endl;
+                LOG_ERROR << "Existing ring buffer size would cause overflow: " << existing_size;
                 sem_post(sem);
                 return nullptr;
             }
             size_t existing_aligned_size = ((existing_size + ALIGNMENT - 1) / ALIGNMENT) * ALIGNMENT;
             // 检查偏移量累加是否会溢出
             if (rb_offset > SIZE_MAX - existing_aligned_size) {
-                std::cerr << "Ring buffer offset would overflow" << std::endl;
+                LOG_ERROR << "Ring buffer offset would overflow";
                 sem_post(sem);
                 return nullptr;
             }
@@ -128,8 +136,8 @@ TopicMetadata* TopicRegistry::register_topic(const std::string& name, size_t rb_
     
     // 检查是否超出共享内存边界
     if (rb_offset + aligned_rb_size > shm_size_) {
-        std::cerr << "Not enough shared memory for new topic: " << name 
-                  << " (required: " << aligned_rb_size << ", available: " << (shm_size_ - rb_offset) << ")" << std::endl;
+        LOG_ERROR << "Not enough shared memory for new topic: " << name 
+                  << " (required: " << aligned_rb_size << ", available: " << (shm_size_ - rb_offset) << ")";
         sem_post(sem);
         return nullptr;
     }
@@ -147,8 +155,8 @@ TopicMetadata* TopicRegistry::register_topic(const std::string& name, size_t rb_
     // 原子地更新Topic计数
     header_->topic_count.fetch_add(1, std::memory_order_acq_rel);
     
-    std::cout << "Registered topic: " << name << " with ID: " << metadata->topic_id 
-              << " at offset: " << rb_offset << " (aligned size: " << aligned_rb_size << ")" << std::endl;
+    LOG_INFO << "Registered topic: " << name << " with ID: " << metadata->topic_id 
+              << " at offset: " << rb_offset << " (aligned size: " << aligned_rb_size << ")";
     
     sem_post(sem);
     return metadata;
@@ -165,6 +173,7 @@ TopicMetadata* TopicRegistry::get_topic_metadata(const std::string& name) {
         }
     }
     
+    LOG_DEBUG << "Topic not found: " << name;
     return nullptr;
 }
 
@@ -178,6 +187,7 @@ TopicMetadata* TopicRegistry::get_topic_metadata(uint32_t topic_id) {
         }
     }
     
+    LOG_DEBUG << "Topic not found with ID: " << topic_id;
     return nullptr;
 }
 
@@ -204,18 +214,21 @@ bool TopicRegistry::is_valid_topic_name(const std::string& name) {
     // 查找 "://" 分隔符
     size_t separator_pos = name.find("://");
     if (separator_pos == std::string::npos) {
+        LOG_DEBUG << "Invalid topic name format: " << name << " (missing \"://\")";
         return false;
     }
     
     // 提取域名称（分隔符之前的部分）
     std::string domain = name.substr(0, separator_pos);
     if (domain.empty()) {
+        LOG_DEBUG << "Invalid topic name format: " << name << " (empty domain)";
         return false;
     }
     
     // 提取地址名称（分隔符之后的部分）
     std::string address = name.substr(separator_pos + 3);
     if (address.empty()) {
+        LOG_DEBUG << "Invalid topic name format: " << name << " (empty address)";
         return false;
     }
     
