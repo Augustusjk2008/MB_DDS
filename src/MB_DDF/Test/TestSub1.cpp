@@ -5,7 +5,7 @@
 // 无参数 main
 int main() {
     // 设置日志输出级别
-    LOG_SET_LEVEL_TRACE();
+    LOG_SET_LEVEL_INFO();
     // 禁用时间戳输出
     LOG_DISABLE_TIMESTAMP();
     // 禁用函数名和行号显示

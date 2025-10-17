@@ -1,5 +1,6 @@
 # 忽略部分目录
 build/
+tmp/
 .cache/
 
 # 忽略 CMake 生成的文件

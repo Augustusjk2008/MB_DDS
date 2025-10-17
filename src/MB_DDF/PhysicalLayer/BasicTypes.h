@@ -116,6 +116,33 @@ struct Address {
     static Address createUDP(uint32_t ip, uint16_t port) {
         return Address(Type::UDP, ip, port);
     }
+
+    /**
+     * @brief 创建UDP地址的静态工厂方法（字符串IP版本）
+     * @param ip IPv4地址字符串（例如 "192.168.1.1"）
+     * @param port 端口号
+     * @return UDP类型的Address对象
+     */
+    static Address createUDP(std::string ip, uint16_t port) {
+        // 解析IP字符串为整数 (点分十进制转换为32位整数)
+        uint32_t ip_int = 0;
+        uint32_t octet = 0;
+        int shift = 24;  // 从最高位开始
+        
+        for (size_t i = 0; i <= ip.length(); ++i) {
+            if (i == ip.length() || ip[i] == '.') {
+                // 遇到点号或字符串结束，处理当前八位组
+                ip_int |= (octet << shift);
+                shift -= 8;
+                octet = 0;
+            } else {
+                // 累积当前八位组的值
+                octet = octet * 10 + (ip[i] - '0');
+            }
+        }
+        
+        return Address(Type::UDP, ip_int, port);
+    }
     
     /**
      * @brief 创建串口地址的静态工厂方法
