@@ -48,6 +48,9 @@ public:
      * @return DDSCore单例引用
      */
     static DDSCore& instance();
+
+    // 版本号，用于共享内存布局升级
+    static const uint32_t VERSION = 0x00004000;
     
     /**
      * @brief 创建指定Topic的发布者

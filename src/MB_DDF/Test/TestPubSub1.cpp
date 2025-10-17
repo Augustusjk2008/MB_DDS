@@ -4,19 +4,20 @@
 // int main(int argc, char* argv[]) {
 // 无参数 main
 int main() {
-    // 开启TRACE级别的日志输出
-    LOG_SET_LEVEL_TRACE();
+    // 设置日志输出级别
+    // LOG_SET_LEVEL_TRACE();
+    LOG_SET_LEVEL_INFO();
     // 禁用时间戳输出
     LOG_DISABLE_TIMESTAMP();
     // 禁用函数名和行号显示
-    // LOG_DISABLE_FUNCTION_LINE();
+    LOG_DISABLE_FUNCTION_LINE();
 
     // 初始化DDS核心，分配共享内存
-    MB_DDF::DDS::DDSCore& dds = MB_DDF::DDS::DDSCore::instance();
-    // dds.initialize(128 * 1024 * 1024);
+    auto& dds = MB_DDF::DDS::DDSCore::instance();
+    dds.initialize(128 * 1024 * 1024);
 
     // 创建发布者和订阅者
-    auto publisher = dds.create_publisher("local://test_topic_a");
+    auto publisher = dds.create_publisher("local://test_topic_c");
     auto subscriber = dds.create_subscriber("local://test_topic_a"
         , [](const void* data, size_t size, uint64_t timestamp) {
             // 计算延迟
@@ -25,21 +26,24 @@ int main() {
 
             // 打印数据
             const char* str = static_cast<const char*>(data);
-            LOG_INFO << "Received " << size << " bytes of data: " << str;
-            LOG_INFO << "Delay: " << delay / 1000.0f << " us";
+            LOG_DEBUG << "Received " << size << " bytes of data: " << str;
+            LOG_DEBUG << "Delay: " << delay / 1000.0f << " us";
         });
-
-    // 绑定订阅者到CPU核心5
-    subscriber->bind_to_cpu(5);
 
     // 主循环，持续发布数据
     while (true) {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        // 间隔 0.5 秒
+        std::this_thread::sleep_for(std::chrono::milliseconds(1500));
         if (publisher) {
             // 发布的数据带一个递增的数，方便查看
             static int counter = 0;
             std::string msg = "Hello, World! " + std::to_string(counter++);
             publisher->write(msg.c_str(), msg.size());
+        }
+        if (subscriber) {
+            char data[1024];
+            size_t size = sizeof(data);
+            subscriber->read_latest(data, size);
         }
     }
 

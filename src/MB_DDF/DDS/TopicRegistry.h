@@ -30,15 +30,11 @@ struct alignas(64) TopicMetadata {
     char topic_name[64];                        ///< Topic名称（最大63字符 + 终止符）
     size_t ring_buffer_offset;                  ///< 环形缓冲区在共享内存中的偏移量
     size_t ring_buffer_size;                    ///< 环形缓冲区的大小（字节）
-    std::atomic<bool> has_publisher;            ///< 是否已有发布者（只允许一个发布者）
-    std::atomic<uint32_t> subscriber_count;     ///< 当前订阅者数量
-    std::atomic<uint64_t> last_sequence;        ///< 最后发布的消息序列号
 
     /**
      * @brief 默认构造函数，初始化所有字段
      */
-    TopicMetadata() : topic_id(0), ring_buffer_offset(0), ring_buffer_size(0),
-                      has_publisher(false), subscriber_count(0), last_sequence(0) {
+    TopicMetadata() : topic_id(0), ring_buffer_offset(0), ring_buffer_size(0) {
         topic_name[0] = '\0';
     }
 };
@@ -51,6 +47,7 @@ struct alignas(64) TopicMetadata {
  */
 struct alignas(64) TopicRegistryHeader {
     uint32_t magic_number;                  ///< 魔数标记，用于验证共享内存是否已正确初始化
+    uint32_t version;                       ///< 注册表版本号，用于版本迁移
     std::atomic<uint32_t> next_topic_id;   ///< 下一个可用的Topic ID
     std::atomic<uint32_t> topic_count;     ///< 当前注册的Topic数量
     // 可扩展其他全局元数据

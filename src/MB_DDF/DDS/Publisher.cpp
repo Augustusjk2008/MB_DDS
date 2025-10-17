@@ -5,7 +5,7 @@
  * @author Jiangkai
  */
 
-#include "Publisher.h"
+#include "MB_DDF/DDS/Publisher.h"
 #include <random>
 
 namespace MB_DDF {
@@ -55,6 +55,14 @@ std::string Publisher::get_topic_name() const {
         return std::string(metadata_->topic_name);
     }
     return ""; // metadata为空时返回空字符串
+}
+
+uint64_t Publisher::get_id() const {
+    return publisher_id_;
+}
+
+std::string Publisher::get_name() const {
+    return publisher_name_;
 }
 
 } // namespace DDS

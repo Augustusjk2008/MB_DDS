@@ -85,6 +85,8 @@ bool RingBuffer::publish_message(const void* data, size_t size) {
     // 更新当前序列号和写入位置
     header_->current_sequence.store(buffer_msg->header.sequence, std::memory_order_release);
     header_->write_pos.store(new_write_pos, std::memory_order_release);
+    // 更新最新消息时间戳
+    header_->timestamp.store(buffer_msg->header.timestamp, std::memory_order_release);
     
     // 内存屏障确保消息完全写入后再通知
     std::atomic_thread_fence(std::memory_order_release);
@@ -121,6 +123,7 @@ bool RingBuffer::read_expected(SubscriberState* subscriber, Message*& out_messag
                 out_message = msg;
                 subscriber->last_read_sequence = msg->header.sequence;
                 subscriber->read_pos = search_pos;
+                subscriber->timestamp = msg->header.timestamp;
                 return true;
             } else {
                 search_pos = (search_pos + msg->msg_size()) % capacity_;
@@ -156,7 +159,7 @@ uint64_t RingBuffer::get_unread_count(SubscriberState* subscriber) {
     
     // 计算未读消息数量
     uint64_t unread_count = buffer_current_seq - subscriber->last_read_sequence;
-    LOG_INFO << "get_unread_count " << unread_count;
+    LOG_DEBUG << "get_unread_count " << unread_count;
     return unread_count;
 }
 
@@ -168,6 +171,12 @@ bool RingBuffer::set_publisher(uint64_t publisher_id, const std::string& publish
     // 检查是否已存在
     if (header_->publisher_id != 0) {
         LOG_ERROR << "set_publisher failed, publisher_id " << publisher_id << " already registered";
+        // 如果名字相同，允许更新id
+        if (std::strcmp(header_->publisher_name, publisher_name.c_str()) == 0) {
+            header_->publisher_id = publisher_id;
+            LOG_INFO << "set_publisher " << publisher_id << " " << publisher_name << " (name unchanged)";
+            return true;
+        }
         return false;
     }
 
@@ -203,6 +212,15 @@ SubscriberState* RingBuffer::register_subscriber(uint64_t subscriber_id, const s
     for (uint32_t i = 0; i < count; ++i) {
         if (registry_->subscribers[i].subscriber_id == subscriber_id) {
             LOG_ERROR << "register_subscriber failed, subscriber_id " << subscriber_id << " already registered";
+            return &registry_->subscribers[i];
+        }
+    }
+
+    // 有可能名字重复，但是id不同
+    for (uint32_t i = 0; i < count; ++i) {
+        if (std::strcmp(registry_->subscribers[i].subscriber_name, subscriber_name.c_str()) == 0) {
+            LOG_ERROR << "register_subscriber failed, subscriber_name " << subscriber_name << " already registered";
+            registry_->subscribers[i].subscriber_id = subscriber_id;
             return &registry_->subscribers[i];
         }
     }

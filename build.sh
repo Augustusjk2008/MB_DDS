@@ -12,8 +12,6 @@ NC='\033[0m'
 # 默认配置
 BUILD_TYPE="Debug"
 CLEAN_BUILD=false
-RUN_AFTER_BUILD=false
-DEBUG_MODE=false
 
 # 显示帮助信息
 show_help() {
@@ -21,15 +19,15 @@ show_help() {
     echo "选项:"
     echo "  -r, --release    构建 Release 版本（默认: Debug）"
     echo "  -c, --clean      清理后重新构建"
-    echo "  -x, --run        构建完成后运行程序"
-    echo "  -g, --debug      构建完成后启动 GDB 调试（仅 Debug 模式）"
     echo "  -h, --help       显示帮助信息"
     echo ""
     echo "示例:"
     echo "  $0                # 构建 Debug 版本"
     echo "  $0 -r             # 构建 Release 版本"
-    echo "  $0 -c -g          # 清理构建并启动调试"
-    echo "  $0 -r -x          # 构建 Release 版本并运行"
+    echo "  $0 -c             # 清理构建"
+    echo ""
+    echo "构建完成后，可执行文件位于 build/ 目录下，如："
+    echo "  ./build/TestMonitor"
     exit 0
 }
 
@@ -42,14 +40,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         -c|--clean)
             CLEAN_BUILD=true
-            shift
-            ;;
-        -x|--run)
-            RUN_AFTER_BUILD=true
-            shift
-            ;;
-        -g|--debug)
-            DEBUG_MODE=true
             shift
             ;;
         -h|--help)
@@ -92,15 +82,13 @@ echo -e "${GREEN}构建成功 ($BUILD_TYPE)${NC}"
 # 返回项目根目录
 cd ..
 
-# 构建后操作
-if [ "$DEBUG_MODE" = true ] && [ "$BUILD_TYPE" = "Debug" ]; then
-    echo -e "${YELLOW}启动 GDB 调试...${NC}"
-    gdb -ex 'run' --args build/TestMain
-elif [ "$DEBUG_MODE" = true ] && [ "$BUILD_TYPE" = "Release" ]; then
-    echo -e "${YELLOW}警告: 调试模式仅适用于 Debug 构建${NC}"
-    echo -e "${YELLOW}运行程序...${NC}"
-    ./build/TestMain
-elif [ "$RUN_AFTER_BUILD" = true ]; then
-    echo -e "${YELLOW}运行程序...${NC}"
-    ./build/TestMain
-fi
+# 显示可用的可执行文件
+echo -e "${GREEN}可用的测试程序：${NC}"
+for exe in build/Test*; do
+    if [ -x "$exe" ]; then
+        echo "  $exe"
+    fi
+done
+
+echo -e "${YELLOW}提示：选择一个测试程序运行，例如：${NC}"
+echo "  ./build/TestMonitor"

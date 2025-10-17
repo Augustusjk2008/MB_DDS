@@ -1,10 +1,9 @@
 /**
  * @file LoggerExtensions.h
  * @brief 日志系统扩展功能
- * @version 1.0
- * @date 2024
+ * @date 2025-10-16
  * 
- * @copyright Copyright (c) 2024 MB_DDF
+ * @author Jiangkai
  * 
  * @details
  * 本文件提供日志系统的扩展功能，包括各种常用的格式化打印功能。

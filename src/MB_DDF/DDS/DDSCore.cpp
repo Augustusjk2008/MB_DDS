@@ -18,6 +18,9 @@
 namespace MB_DDF {
 namespace DDS {
 
+// 定义静态成员变量
+const uint32_t DDSCore::VERSION;
+
 DDSCore& DDSCore::instance() {
     static DDSCore instance;
     return instance;
@@ -39,7 +42,12 @@ std::shared_ptr<Publisher> DDSCore::create_publisher(const std::string& topic_na
     }
     
     LOG_INFO << "created publisher, topic name: " << topic_name;
-    return std::make_shared<Publisher>(metadata, buffer, process_name_);
+    auto publisher = std::make_shared<Publisher>(metadata, buffer, process_name_);
+    if (!buffer->set_publisher(publisher->get_id(), publisher->get_name())) {
+        LOG_ERROR << "failed to set publisher, publisher id: " << publisher->get_id() << ", name: " << publisher->get_name();
+        return nullptr; 
+    }
+    return publisher;
 }
 
 std::shared_ptr<Publisher> DDSCore::create_writer(const std::string& topic_name) {   

@@ -68,6 +68,18 @@ public:
      */
     std::string get_topic_name() const;
 
+    /**
+     * @brief 获取发布者ID
+     * @return 发布者的唯一标识符
+     */
+    uint64_t get_id() const;
+
+    /**
+     * @brief 获取发布者名称
+     * @return 发布者名称字符串
+     */
+    std::string get_name() const;
+
 private:
     TopicMetadata* metadata_;    ///< Topic元数据指针
     RingBuffer* ring_buffer_;    ///< 环形缓冲区指针

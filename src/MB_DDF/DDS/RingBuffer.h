@@ -53,6 +53,7 @@ struct alignas(64) RingHeader {
     std::atomic<uint64_t> write_pos;          ///< 当前写入位置（字节偏移）
     std::atomic<uint64_t> current_sequence;   ///< 当前消息序列号
     std::atomic<uint32_t> notification_count; ///< futex通知计数
+    std::atomic<uint64_t> timestamp;          ///< 最新消息时间戳（纳秒精度）
     size_t capacity;                          ///< 数据区容量
     size_t data_offset;                       ///< 数据区起始偏移
     uint32_t magic_number;                    ///< 魔数，用于验证初始化

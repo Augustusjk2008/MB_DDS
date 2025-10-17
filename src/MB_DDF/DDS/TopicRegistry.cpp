@@ -9,12 +9,16 @@
  */
 
 #include "MB_DDF/DDS/TopicRegistry.h"
+#include "MB_DDF/DDS/DDSCore.h"
 #include "MB_DDF/DDS/SharedMemory.h"
 #include "MB_DDF/Debug/Logger.h"
 #include <cstring>
 
 namespace MB_DDF {
 namespace DDS {
+
+// 向前声明DDSCore类，用于获取版本号
+class DDSCore;
 
 TopicRegistry::TopicRegistry(void* shm_base_addr, size_t shm_size, SharedMemoryManager* shm_manager)
     : shm_base_addr_(shm_base_addr), shm_size_(shm_size), shm_manager_(shm_manager) {
@@ -40,12 +44,16 @@ TopicRegistry::TopicRegistry(void* shm_base_addr, size_t shm_size, SharedMemoryM
         // 重新设置header指针（因为memset后需要重新初始化）
         header_ = static_cast<TopicRegistryHeader*>(shm_base_addr_);
         
-        // 设置魔数标记
+        // 设置魔数标记和版本号
         header_->magic_number = MAGIC_NUMBER;
+        header_->version = DDSCore::VERSION;
         header_->next_topic_id.store(1);
         header_->topic_count.store(0);
 
         LOG_DEBUG << "TopicRegistry initialized with magic number: " << MAGIC_NUMBER;
+    } else if (header_->version != DDSCore::VERSION) {
+        LOG_ERROR << "TopicRegistry version mismatch: expected " << DDSCore::VERSION << ", found " << header_->version;
+        return; // 构造函数失败
     }
     
     // 释放信号量
@@ -148,9 +156,6 @@ TopicMetadata* TopicRegistry::register_topic(const std::string& name, size_t rb_
     metadata->topic_name[sizeof(metadata->topic_name) - 1] = '\0';
     metadata->ring_buffer_offset = rb_offset;
     metadata->ring_buffer_size = rb_size; // 保存原始大小
-    metadata->has_publisher.store(false, std::memory_order_release);
-    metadata->subscriber_count.store(0, std::memory_order_release);
-    metadata->last_sequence.store(0, std::memory_order_release);
     
     // 原子地更新Topic计数
     header_->topic_count.fetch_add(1, std::memory_order_acq_rel);
