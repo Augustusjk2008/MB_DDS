@@ -16,7 +16,7 @@ int main() {
     dds.initialize(128 * 1024 * 1024);
 
     // 创建发布者和订阅者
-    auto subscriber_a = dds.create_subscriber("local://test_topic_a"
+    auto subscriber_a = dds.create_subscriber("local://test_topic_d"
         , [](const void* data, size_t size, uint64_t timestamp) {
             // 计算延迟
             uint64_t current_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
@@ -41,8 +41,8 @@ int main() {
         });
 
     // 绑定订阅者到CPU核心
-    subscriber_a->bind_to_cpu(4);
-    subscriber_b->bind_to_cpu(5);
+    subscriber_a->bind_to_cpu(1);
+    subscriber_b->bind_to_cpu(0);
 
     // 永久等待，保持程序运行
     while (true) {

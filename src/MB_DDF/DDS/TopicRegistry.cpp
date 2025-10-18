@@ -52,7 +52,7 @@ TopicRegistry::TopicRegistry(void* shm_base_addr, size_t shm_size, SharedMemoryM
 
         LOG_DEBUG << "TopicRegistry initialized with magic number: " << MAGIC_NUMBER;
     } else if (header_->version != DDSCore::VERSION) {
-        LOG_ERROR << "TopicRegistry version mismatch: expected " << DDSCore::VERSION << ", found " << header_->version;
+        LOG_ERROR << "DDS version mismatch: expected " << DDSCore::VERSION << ", found " << header_->version;
         return; // 构造函数失败
     }
     

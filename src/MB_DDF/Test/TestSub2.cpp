@@ -41,11 +41,13 @@ int main() {
         });
 
     // 绑定订阅者到CPU核心
-    subscriber_a->bind_to_cpu(4);
-    subscriber_b->bind_to_cpu(5);
+    subscriber_a->bind_to_cpu(2);
+    subscriber_b->bind_to_cpu(3);
 
-    // 等待用户输入，保持程序运行
-    std::cin.get();
+    // 永久等待，保持程序运行
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
 
     return 0;
 }

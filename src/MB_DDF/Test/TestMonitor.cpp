@@ -3,9 +3,39 @@
 #include "MB_DDF/Monitor/DDSMonitor.h"
 #include "MB_DDF/PhysicalLayer/UdpLink.h"
 
-// int main(int argc, char* argv[]) {
-// 无参数 main
-int main() {
+// 测试监控器主程序
+int main(int argc, char* argv[]) {
+    // 默认参数值
+    bool print_info = false;
+    bool send_snapshot = true;
+    
+    // 解析命令行参数
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--print-info" || arg == "-p") {
+            print_info = true;
+        } else if (arg == "--no-print-info") {
+            print_info = false;
+        } else if (arg == "--send-snapshot" || arg == "-s") {
+            send_snapshot = true;
+        } else if (arg == "--no-send-snapshot") {
+            send_snapshot = false;
+        } else if (arg == "--help" || arg == "-h") {
+            std::cout << "用法: " << argv[0] << " [选项]" << std::endl;
+            std::cout << "选项:" << std::endl;
+            std::cout << "  -p, --print-info      启用监控信息打印 (默认: 关闭)" << std::endl;
+            std::cout << "  --no-print-info       禁用监控信息打印" << std::endl;
+            std::cout << "  -s, --send-snapshot   启用快照数据发送 (默认: 开启)" << std::endl;
+            std::cout << "  --no-send-snapshot    禁用快照数据发送" << std::endl;
+            std::cout << "  -h, --help            显示此帮助信息" << std::endl;
+            return 0;
+        } else {
+            std::cout << "未知参数: " << arg << std::endl;
+            std::cout << "使用 --help 查看可用选项" << std::endl;
+            return -1;
+        }
+    }
+    
     // 设置日志输出级别
     LOG_SET_LEVEL_INFO();
     // 禁用时间戳输出
@@ -34,11 +64,9 @@ int main() {
     MB_DDF::PhysicalLayer::LinkConfig sender_config;
     sender_config.local_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.56.132", 9001); 
     sender_config.mtu = 32768;
-    // sender_config.remote_addr = dest_addr;
     
     // 目标地址
     auto dest_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.56.1", 9002);
-    // auto dest_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.56.132", 9001);
     
     
     if (!sender.initialize(sender_config) || !sender.open()) {
@@ -47,9 +75,7 @@ int main() {
     }
 
     // 设置监控回调
-    monitor.set_monitor_callback([&monitor, &sender, &dest_addr](const MB_DDF::Monitor::DDSSystemSnapshot& snapshot) {
-        static const bool print_info = false;
-        static const bool send_snapshot = true;
+    monitor.set_monitor_callback([&monitor, &sender, &dest_addr, print_info, send_snapshot](const MB_DDF::Monitor::DDSSystemSnapshot& snapshot) {
 
         if (print_info) {
             std::cout << "\n=== 监控快照 (时间戳: " << snapshot.timestamp << ") ===" << std::endl;
@@ -109,10 +135,11 @@ int main() {
         LOG_ERROR << "Failed to start monitoring";
         return -1;
     }
-    
-    // 等待用户输入
-    LOG_INFO << "Monitoring started, press any key to stop...";
-    std::cin.get();
+
+    // 永久等待，保持程序运行
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
     
     return 0;
 }

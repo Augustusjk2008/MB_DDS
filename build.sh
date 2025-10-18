@@ -12,6 +12,7 @@ NC='\033[0m'
 # 默认配置
 BUILD_TYPE="Debug"
 CLEAN_BUILD=false
+RUN_ALL_TESTS=false
 
 # 显示帮助信息
 show_help() {
@@ -19,12 +20,15 @@ show_help() {
     echo "选项:"
     echo "  -r, --release    构建 Release 版本（默认: Debug）"
     echo "  -c, --clean      清理后重新构建"
+    echo "  -t, --test       构建完成后自动运行所有测试程序"
     echo "  -h, --help       显示帮助信息"
     echo ""
     echo "示例:"
     echo "  $0                # 构建 Debug 版本"
     echo "  $0 -r             # 构建 Release 版本"
     echo "  $0 -c             # 清理构建"
+    echo "  $0 -t             # 构建并运行所有测试程序"
+    echo "  $0 -r -t          # 构建 Release 版本并运行所有测试程序"
     echo ""
     echo "构建完成后，可执行文件位于 build/ 目录下，如："
     echo "  ./build/TestMonitor"
@@ -40,6 +44,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -c|--clean)
             CLEAN_BUILD=true
+            shift
+            ;;
+        -t|--test)
+            RUN_ALL_TESTS=true
             shift
             ;;
         -h|--help)
@@ -90,5 +98,55 @@ for exe in build/Test*; do
     fi
 done
 
-echo -e "${YELLOW}提示：选择一个测试程序运行，例如：${NC}"
-echo "  ./build/TestMonitor"
+# 运行所有测试程序（如果指定了-t选项）
+if [ "$RUN_ALL_TESTS" = true ]; then
+    echo -e "${YELLOW}开始运行所有测试程序...${NC}"
+    echo ""
+    
+    # 获取所有测试程序
+    test_programs=(build/Test*)
+    
+    echo -e "${YELLOW}发现 ${#test_programs[@]} 个测试程序${NC}"
+    
+    for exe in "${test_programs[@]}"; do
+        if [ -x "$exe" ]; then
+            echo -e "${GREEN}启动 $exe...${NC}"
+            echo "----------------------------------------"
+            
+            # 在后台运行测试程序，不设置超时，让程序持续运行
+            "$exe" &
+            test_pid=$!
+            
+            # 等待一小段时间检查程序是否成功启动
+            # sleep 0.1
+            
+            # 检查进程是否还在运行
+            if kill -0 $test_pid 2>/dev/null; then
+                echo -e "${GREEN}程序已成功启动，PID: $test_pid${NC}"
+            else
+                echo -e "${RED}程序启动失败或立即退出${NC}"
+                # 尝试获取退出状态
+                wait $test_pid 2>/dev/null
+                exit_code=$?
+                echo -e "${RED}退出码: $exit_code${NC}"
+            fi
+            
+            echo "----------------------------------------"
+            echo ""
+            sleep 0.5
+        else
+            echo -e "${RED}文件 $exe 不可执行或不存在${NC}"
+        fi
+    done
+    
+    echo -e "${GREEN}所有测试程序已启动完成${NC}"
+    echo -e "${YELLOW}注意：所有程序都在后台运行，使用以下命令查看运行状态：${NC}"
+    echo "  ps aux | grep Test"
+    echo -e "${YELLOW}要停止所有测试程序，可以使用：${NC}"
+    echo "  pkill -f Test"
+else
+    echo -e "${YELLOW}提示：选择一个测试程序运行，例如：${NC}"
+    echo "  ./build/TestMonitor"
+    echo -e "${YELLOW}或者使用 -t 选项自动运行所有测试程序：${NC}"
+    echo "  $0 -t"
+fi
