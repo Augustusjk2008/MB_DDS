@@ -132,29 +132,14 @@ fi
 echo -e "${GREEN}可用的测试程序：${NC}"
 test_rows=()
 test_maxlen=0
-test_rows=()
-test_maxlen=0
 for exe in build/Test*; do
     if [ -x "$exe" ]; then
         size=$(stat -c %s "$exe" 2>/dev/null || stat -f %z "$exe")
         hsize=$(human_size "$size")
         test_rows+=("$exe|$hsize")
         (( ${#exe} > test_maxlen )) && test_maxlen=${#exe}
-        size=$(stat -c %s "$exe" 2>/dev/null || stat -f %z "$exe")
-        hsize=$(human_size "$size")
-        test_rows+=("$exe|$hsize")
-        (( ${#exe} > test_maxlen )) && test_maxlen=${#exe}
     fi
 done
-if [ ${#test_rows[@]} -gt 0 ]; then
-    for row in "${test_rows[@]}"; do
-        path="${row%%|*}"
-        hsize="${row##*|}"
-        printf "  %-*s  %12s\n" "$test_maxlen" "$path" "$hsize"
-    done
-else
-    echo "  (无)"
-fi
 if [ ${#test_rows[@]} -gt 0 ]; then
     for row in "${test_rows[@]}"; do
         path="${row%%|*}"
