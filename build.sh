@@ -24,8 +24,8 @@ show_help() {
     echo "  -h, --help       显示帮助信息"
     echo ""
     echo "示例:"
-    echo "  $0                # 构建 Debug 版本"
-    echo "  $0 -r             # 构建 Release 版本"
+    echo "  $0                # 构建 Debug 版本（库+测试程序）"
+    echo "  $0 -r             # 构建 Release 版本（库+测试程序）"
     echo "  $0 -c             # 清理构建"
     echo "  $0 -t             # 构建并运行所有测试程序"
     echo "  $0 -r -t          # 构建 Release 版本并运行所有测试程序"
@@ -33,6 +33,7 @@ show_help() {
     echo "构建完成后，生成的静态库位于 build/ 目录："
     echo "  ./build/libMB_DDF_CORE.a"
     echo "  ./build/libMB_DDF_PHYSICAL.a"
+    echo "  ./build/libMB_DDF_TIMER.a"
     echo "并且可执行文件位于 build/ 目录，如："
     echo "构建完成后，生成的静态库位于 build/ 目录："
     echo "  ./build/libMB_DDF_CORE.a"
@@ -80,7 +81,9 @@ cd build || exit 1
 
 # CMake 配置
 echo -e "${YELLOW}配置 CMake ($BUILD_TYPE)...${NC}"
-if ! cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE; then
+CMAKE_ARGS="-DCMAKE_BUILD_TYPE=$BUILD_TYPE"
+
+if ! cmake .. $CMAKE_ARGS; then
     echo -e "${RED}CMake 配置失败${NC}"
     exit 1
 fi
@@ -197,7 +200,6 @@ if [ "$RUN_ALL_TESTS" = true ]; then
             
             echo "----------------------------------------"
             echo ""
-            sleep 0.5
         else
             echo -e "${RED}文件 $exe 不可执行或不存在${NC}"
         fi

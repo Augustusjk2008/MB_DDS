@@ -115,7 +115,7 @@ int main(int argc, char* argv[]) {
         
         if (send_snapshot) {
             // 准备数据
-            char data_buffer[5000];
+            // char data_buffer[5000];
             // uint32_t message_len = monitor.serialize_to_binary(snapshot, data_buffer, 5000);        
             auto json_str = monitor.serialize_to_json(snapshot);
             

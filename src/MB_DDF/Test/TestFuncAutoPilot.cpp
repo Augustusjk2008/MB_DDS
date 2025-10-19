@@ -1,5 +1,6 @@
 #include "MB_DDF/DDS/DDSCore.h"
 #include "MB_DDF/Debug/Logger.h"
+#include <chrono>
 
 // int main(int argc, char* argv[]) {
 // 无参数 main
@@ -21,7 +22,7 @@ int main() {
     auto subscriber = dds.create_subscriber("local://overload_command"
         , [](const void* data, size_t size, uint64_t timestamp) {
             // 计算延迟
-            uint64_t current_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+            uint64_t current_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
             uint64_t delay = current_time - timestamp;
 
             // 打印数据
@@ -40,7 +41,9 @@ int main() {
             std::string msg = "Hello, World! " + std::to_string(counter++);
             publisher->write(msg.c_str(), msg.size());
         }
-        // 读取订阅者数据，此段不能和订阅者回调函数共存，否则会导致数据丢失
+        // 仅当 subscriber 设置为无回调时才可主动读取数据，否则是线程不安全的
+        // 因为回调函数是在 DDS 线程中执行的，且已经在读取数据，而 read_latest 或 read_next 是在主线程中执行的
+        // 如果在有回调函数时再主动调用 read_latest 或 read_next，可能会导致数据丢失或不一致
         // if (subscriber) {
         //     char data[1024];
         //     size_t size = sizeof(data);

@@ -40,10 +40,10 @@ struct alignas(8) MessageHeader {
     
     /**
      * @brief 设置当前时间戳
-     * 使用高精度时钟获取当前时间并设置到timestamp字段
+     * 使用steady时钟获取当前时间并设置到timestamp字段
      */
     void set_timestamp() {
-        auto now = std::chrono::high_resolution_clock::now();
+        auto now = std::chrono::steady_clock::now();
         timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
             now.time_since_epoch()).count();
     }

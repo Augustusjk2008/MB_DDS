@@ -41,8 +41,8 @@ int main() {
         });
 
     // 绑定订阅者到CPU核心
-    subscriber_a->bind_to_cpu(1);
-    subscriber_b->bind_to_cpu(0);
+    subscriber_a->bind_to_cpu(4);
+    subscriber_b->bind_to_cpu(5);
 
     // 永久等待，保持程序运行
     while (true) {
