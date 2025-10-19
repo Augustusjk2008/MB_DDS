@@ -40,11 +40,12 @@ int main() {
             std::string msg = "Hello, World! " + std::to_string(counter++);
             publisher->write(msg.c_str(), msg.size());
         }
-        if (subscriber) {
-            char data[1024];
-            size_t size = sizeof(data);
-            subscriber->read_latest(data, size);
-        }
+        // 读取订阅者数据，此段不能和订阅者回调函数共存，否则会导致数据丢失
+        // if (subscriber) {
+        //     char data[1024];
+        //     size_t size = sizeof(data);
+        //     subscriber->read_latest(data, size);
+        // }
     }
 
     return 0;

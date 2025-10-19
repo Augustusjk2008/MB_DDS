@@ -38,6 +38,9 @@ MB_DDF/
 │   │   ├── IPhysicalLink.h     # 物理链路接口
 │   │   ├── BasePhysicalLink.h/cpp # 物理链路基类
 │   │   └── UdpLink.h/cpp       # UDP链路实现
+│   ├── Timer/                  # 定时器模块
+│   │   ├── SystemTimer.h/cpp   # 高精度周期定时器（POSIX定时器 + 实时信号）
+│   │   └── ChronoHelper.h/cpp  # 时间转换与测量工具
 │   └── Test/                   # 测试程序
 │       ├── TestPubSub*.cpp     # 发布-订阅测试
 │       ├── TestPub*.cpp        # 发布者测试
@@ -55,8 +58,9 @@ MB_DDF/
 - **编译器**：支持C++20标准的编译器（GCC 10+, Clang 12+）
 - **CMake**：版本3.10或更高
 - **依赖库**：
-  - pthread（线程库）
-  - rt（实时扩展库，用于共享内存）
+  - pthread（线程库，用于并发和可选的定时器独立线程）
+  - rt（实时扩展库，提供POSIX定时器与共享内存等）
+  - syscall/`eventfd`（Linux内核接口，用于定时器线程唤醒机制）
 
 ## 快速开始
 
@@ -170,12 +174,47 @@ auto udp_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.1.100", 8080)
 auto serial_addr = MB_DDF::PhysicalLayer::Address::createSerial(1); // COM1
 ```
 
+### 高精度定时器示例
+
+```cpp
+#include "MB_DDF/Timer/SystemTimer.h"
+#include "MB_DDF/Debug/Logger.h"
+#include <atomic>
+#include <chrono>
+#include <thread>
+
+int main() {
+    LOG_SET_LEVEL_INFO();
+
+    std::atomic<int> ticks{0};
+
+    MB_DDF::Timer::SystemTimerOptions opt;
+    opt.use_new_thread = true;      // 在独立线程执行回调
+    opt.sched_policy = SCHED_FIFO;  // 需要合适权限
+    opt.priority = 60;              // 0-99（FIFO/RR）
+    opt.cpu = -1;                   // 不绑核（可选）
+
+    auto timer = MB_DDF::Timer::SystemTimer::start("10ms", [&]{
+        ++ticks;
+        LOG_INFO << "tick: " << ticks.load();
+    }, opt);
+
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    timer->stop();
+    return 0;
+}
+```
+
+- 支持周期字符串：`1s`、`20ms`、`500us`、`100ns`
+- 两种执行模式：在信号处理上下文执行或独立线程执行
+- 可配置实时调度策略与优先级，以及绑核选项
+
 ## 核心组件说明
 
 ### DDSCore
 - **功能**：DDS系统的主控制类，采用单例模式
 - **职责**：管理共享内存、Topic注册、发布者/订阅者创建
-- **版本**：当前版本 0.4.1
+- **版本**：当前版本 0.4.2
 
 ### 消息系统
 - **MessageHeader**：包含魔数、Topic ID、序列号、时间戳、数据大小和校验和
@@ -191,6 +230,11 @@ auto serial_addr = MB_DDF::PhysicalLayer::Address::createSerial(1); // COM1
 - **支持协议**：CAN/CANFD、UDP、串口
 - **地址类型**：统一的地址抽象，支持多种物理介质
 - **链路配置**：支持波特率、MTU、超时等参数配置
+
+### 定时器
+- **SystemTimer**：高精度周期定时器，支持`s/ms/us/ns`周期字符串
+- **执行模式**：信号处理上下文或独立工作线程（eventfd唤醒）
+- **调度配置**：支持`SCHED_FIFO/RR`、优先级设置与绑核
 
 ## 调试和监控
 
@@ -261,4 +305,4 @@ make debug  # 自动启动GDB调试第一个测试程序
 
 ---
 
-*最后更新：2025年10月*
+*最后更新：2025年10月19日*

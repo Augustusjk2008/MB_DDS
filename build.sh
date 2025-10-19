@@ -34,6 +34,10 @@ show_help() {
     echo "  ./build/libMB_DDF_CORE.a"
     echo "  ./build/libMB_DDF_PHYSICAL.a"
     echo "并且可执行文件位于 build/ 目录，如："
+    echo "构建完成后，生成的静态库位于 build/ 目录："
+    echo "  ./build/libMB_DDF_CORE.a"
+    echo "  ./build/libMB_DDF_PHYSICAL.a"
+    echo "并且可执行文件位于 build/ 目录，如："
     echo "  ./build/TestMonitor"
     exit 0
 }
@@ -101,10 +105,9 @@ human_size() {
 
 # 显示生成的静态库（相对路径 + 对齐的大小）
 echo -e "${GREEN}生成的静态库：${NC}"
-libs=(build/libMB_DDF_CORE.a build/libMB_DDF_PHYSICAL.a)
 lib_rows=()
 lib_maxlen=0
-for lib in "${libs[@]}"; do
+for lib in build/*.a; do
     if [ -f "$lib" ]; then
         size=$(stat -c %s "$lib" 2>/dev/null || stat -f %z "$lib")
         hsize=$(human_size "$size")
@@ -126,14 +129,29 @@ fi
 echo -e "${GREEN}可用的测试程序：${NC}"
 test_rows=()
 test_maxlen=0
+test_rows=()
+test_maxlen=0
 for exe in build/Test*; do
     if [ -x "$exe" ]; then
         size=$(stat -c %s "$exe" 2>/dev/null || stat -f %z "$exe")
         hsize=$(human_size "$size")
         test_rows+=("$exe|$hsize")
         (( ${#exe} > test_maxlen )) && test_maxlen=${#exe}
+        size=$(stat -c %s "$exe" 2>/dev/null || stat -f %z "$exe")
+        hsize=$(human_size "$size")
+        test_rows+=("$exe|$hsize")
+        (( ${#exe} > test_maxlen )) && test_maxlen=${#exe}
     fi
 done
+if [ ${#test_rows[@]} -gt 0 ]; then
+    for row in "${test_rows[@]}"; do
+        path="${row%%|*}"
+        hsize="${row##*|}"
+        printf "  %-*s  %12s\n" "$test_maxlen" "$path" "$hsize"
+    done
+else
+    echo "  (无)"
+fi
 if [ ${#test_rows[@]} -gt 0 ]; then
     for row in "${test_rows[@]}"; do
         path="${row%%|*}"
