@@ -49,7 +49,7 @@ public:
     bool publish(const void* data, size_t size);
 
     /**
-     * @brief 写入数据到环形缓冲区
+     * @brief 写入数据到Topic（别名）
      * @param data 要写入的数据指针
      * @param size 数据大小（字节）
      * @return 写入成功返回true，失败返回false
@@ -83,7 +83,6 @@ public:
 private:
     TopicMetadata* metadata_;    ///< Topic元数据指针
     RingBuffer* ring_buffer_;    ///< 环形缓冲区指针
-    uint64_t sequence_number_;   ///< 消息序列号计数器
 
     // 自身信息
     uint64_t publisher_id_;        ///< 唯一的发布者ID

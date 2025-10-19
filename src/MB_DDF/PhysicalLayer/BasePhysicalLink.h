@@ -11,7 +11,7 @@
 
 #pragma once
 
-#include "IPhysicalLink.h"
+#include "MB_DDF/PhysicalLayer/IPhysicalLink.h"
 #include <string>
 
 namespace MB_DDF {
@@ -168,7 +168,18 @@ public:
      * 派生类必须实现此方法，完成具体协议的阻塞数据接收。
      */
     virtual int32_t receive(uint8_t* buffer, uint32_t buffer_size, Address& src_addr, uint32_t timeout_us) override = 0;
-    
+
+    /**
+     * @brief 注册接收回调
+     * @param cb 接收回调函数，当链路收到数据时调用
+     * 
+     * 设置接收回调后，在链路处于OPEN状态时将异步接收数据并调用回调。
+     * 传入空回调（nullptr）将禁用异步接收。
+     * 
+     * 派生类必须实现此方法，完成具体协议的阻塞数据接收。
+     */
+    virtual void setReceiveCallback(ReceiveCallback cb) override = 0;
+
     /**
      * @brief 设置链路特定的自定义参数（纯虚函数）
      * @param key 参数名称

@@ -117,7 +117,7 @@ bool RingBuffer::read_expected(SubscriberState* subscriber, Message*& out_messag
     for (size_t i = 0; i < capacity_; i += ALIGNMENT) {
         Message* msg = read_message_at(search_pos);
         
-        if (msg != nullptr && validate_message(msg)) {
+        if (validate_message(msg)) {
             // 检查序列号是否匹配期望值
             if (msg->header.sequence == next_expected_sequence) {
                 out_message = msg;

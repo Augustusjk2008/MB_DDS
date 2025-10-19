@@ -12,6 +12,8 @@
 
 #include <cstdint>
 #include <string>
+#include <arpa/inet.h>
+#include <functional>
 
 namespace MB_DDF {
 namespace PhysicalLayer {
@@ -47,7 +49,7 @@ struct Address {
     union {
         uint32_t can_id;        ///< CAN标识符（当type为CAN时使用）
         struct {
-            uint32_t ip;        ///< IPv4地址（网络字节序）
+            uint32_t ip;        ///< IPv4地址（主机字节序）
             uint16_t port;      ///< 端口号（主机字节序）
         } udp_addr;             ///< UDP地址结构（当type为UDP时使用）
         uint32_t com_port;      ///< 串口编号（当type为SERIAL时使用）
@@ -84,8 +86,8 @@ struct Address {
     /**
      * @brief UDP地址专用构造函数
      * @param addr_type 地址类型（必须为UDP）
-     * @param ip IPv4地址
-     * @param port 端口号
+     * @param ip IPv4地址（主机字节序）
+     * @param port 端口号（主机字节序）
      * 
      * 专门用于构造UDP网络地址。
      */
@@ -109,8 +111,8 @@ struct Address {
     
     /**
      * @brief 创建UDP地址的静态工厂方法
-     * @param ip IPv4地址
-     * @param port 端口号
+     * @param ip IPv4地址（主机字节序）
+     * @param port 端口号（主机字节序）
      * @return UDP类型的Address对象
      */
     static Address createUDP(uint32_t ip, uint16_t port) {
@@ -120,27 +122,16 @@ struct Address {
     /**
      * @brief 创建UDP地址的静态工厂方法（字符串IP版本）
      * @param ip IPv4地址字符串（例如 "192.168.1.1"）
-     * @param port 端口号
+     * @param port 端口号（主机字节序）
      * @return UDP类型的Address对象
      */
     static Address createUDP(std::string ip, uint16_t port) {
         // 解析IP字符串为整数 (点分十进制转换为32位整数)
+        struct in_addr addr{};
         uint32_t ip_int = 0;
-        uint32_t octet = 0;
-        int shift = 24;  // 从最高位开始
-        
-        for (size_t i = 0; i <= ip.length(); ++i) {
-            if (i == ip.length() || ip[i] == '.') {
-                // 遇到点号或字符串结束，处理当前八位组
-                ip_int |= (octet << shift);
-                shift -= 8;
-                octet = 0;
-            } else {
-                // 累积当前八位组的值
-                octet = octet * 10 + (ip[i] - '0');
-            }
+        if (inet_pton(AF_INET, ip.c_str(), &addr) == 1) {
+            ip_int = ntohl(addr.s_addr);  // 转为主机字节序
         }
-        
         return Address(Type::UDP, ip_int, port);
     }
     
@@ -179,20 +170,20 @@ struct Address {
      * @return 地址的字符串表示形式
      * 
      * 根据地址类型生成可读的字符串格式：
-     * - CAN: "CAN:0x[ID]"
+     * - CAN: "CAN:[ID]"
      * - UDP: "UDP:[IP]:[Port]"
      * - SERIAL: "SERIAL:COM[Port]"
      */
     std::string toString() const {
         switch (type) {
         case Type::CAN:
-            return "CAN:0x" + std::to_string(can_id);
+            return "CAN" + std::to_string(can_id);
         case Type::UDP: {
-            uint32_t ip = udp_addr.ip;
-            return "UDP:" + std::to_string((ip >> 24) & 0xFF) + "." +
-                           std::to_string((ip >> 16) & 0xFF) + "." +
-                           std::to_string((ip >> 8) & 0xFF) + "." +
-                           std::to_string(ip & 0xFF) + ":" +
+            uint32_t ip_be = htonl(udp_addr.ip);  // 主机字节序 -> 网络字节序
+            return "UDP:" + std::to_string((ip_be >> 24) & 0xFF) + "." +
+                           std::to_string((ip_be >> 16) & 0xFF) + "." +
+                           std::to_string((ip_be >> 8) & 0xFF) + "." +
+                           std::to_string(ip_be & 0xFF) + ":" +
                            std::to_string(udp_addr.port);
         }
         case Type::SERIAL:
@@ -229,6 +220,14 @@ enum class LinkStatus {
     OPEN,           ///< 已打开状态，链路可正常收发数据
     CLOSED          ///< 已关闭状态，链路未激活
 };
+
+/**
+ * @brief 接收回调类型
+ * 
+ * 当物理链路收到数据时调用。回调在调用期间有效，
+ * 调用者不应在回调返回后继续持有数据指针。
+ */
+using ReceiveCallback = std::function<void(const uint8_t* data, uint32_t length, const Address& src_addr)>;
 
 }  // namespace PhysicalLayer
 }  // namespace MB_DDF

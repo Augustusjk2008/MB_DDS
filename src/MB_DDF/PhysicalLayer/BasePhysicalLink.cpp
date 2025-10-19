@@ -9,7 +9,7 @@
  * 为派生类提供可复用的基础功能支持。
  */
 
-#include "BasePhysicalLink.h"
+#include "MB_DDF/PhysicalLayer/BasePhysicalLink.h"
 #include <cstring>
 
 namespace MB_DDF {

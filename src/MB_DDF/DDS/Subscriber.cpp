@@ -68,6 +68,9 @@ void Subscriber::unsubscribe() {
         LOG_DEBUG << "Subscriber " << subscriber_id_ << " " << subscriber_name_ << " not subscribed";
         return;
     }
+
+    // 停止工作线程
+    running_.store(false);
     
     // 先唤醒可能在 Futex 中阻塞的线程，防止 join 僵死
     // 此处会引起惊群效益，性能不佳，目前为折衷设计，后续可以改进为使用通知直接唤醒线程
@@ -76,7 +79,7 @@ void Subscriber::unsubscribe() {
         ring_buffer_->notify_subscribers();
     }
 
-    running_.store(false);
+    // 标记为未订阅
     subscribed_.store(false);
     
     if (worker_thread_.joinable()) {
@@ -89,10 +92,7 @@ void Subscriber::unsubscribe() {
     LOG_DEBUG << "Subscriber " << subscriber_id_ << " " << subscriber_name_ << " unregistered from ring buffer";
 }
 
-void Subscriber::worker_loop() {
-    const size_t max_message_size = 64 * 1024; // 64KB最大消息大小
-    std::vector<char> buffer(max_message_size);
-    
+void Subscriber::worker_loop() {    
     while (running_.load()) {
         size_t received_size = 0;
         
