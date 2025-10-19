@@ -30,7 +30,10 @@ show_help() {
     echo "  $0 -t             # 构建并运行所有测试程序"
     echo "  $0 -r -t          # 构建 Release 版本并运行所有测试程序"
     echo ""
-    echo "构建完成后，可执行文件位于 build/ 目录下，如："
+    echo "构建完成后，生成的静态库位于 build/ 目录："
+    echo "  ./build/libMB_DDF_CORE.a"
+    echo "  ./build/libMB_DDF_PHYSICAL.a"
+    echo "并且可执行文件位于 build/ 目录，如："
     echo "  ./build/TestMonitor"
     exit 0
 }
@@ -90,13 +93,56 @@ echo -e "${GREEN}构建成功 ($BUILD_TYPE)${NC}"
 # 返回项目根目录
 cd ..
 
-# 显示可用的可执行文件
-echo -e "${GREEN}可用的测试程序：${NC}"
-for exe in build/Test*; do
-    if [ -x "$exe" ]; then
-        echo "  $exe"
+# 工具函数：字节转换为人类可读（KB/MB）
+human_size() {
+    local size_bytes="$1"
+    awk -v s="$size_bytes" 'BEGIN { if (s >= 1048576) printf "%.2f MB", s/1048576; else printf "%.2f KB", s/1024; }'
+}
+
+# 显示生成的静态库（相对路径 + 对齐的大小）
+echo -e "${GREEN}生成的静态库：${NC}"
+libs=(build/libMB_DDF_CORE.a build/libMB_DDF_PHYSICAL.a)
+lib_rows=()
+lib_maxlen=0
+for lib in "${libs[@]}"; do
+    if [ -f "$lib" ]; then
+        size=$(stat -c %s "$lib" 2>/dev/null || stat -f %z "$lib")
+        hsize=$(human_size "$size")
+        lib_rows+=("$lib|$hsize")
+        (( ${#lib} > lib_maxlen )) && lib_maxlen=${#lib}
     fi
 done
+if [ ${#lib_rows[@]} -gt 0 ]; then
+    for row in "${lib_rows[@]}"; do
+        path="${row%%|*}"
+        hsize="${row##*|}"
+        printf "  %-*s  %12s\n" "$lib_maxlen" "$path" "$hsize"
+    done
+else
+    echo "  (无)"
+fi
+
+# 显示可用的可执行文件（相对路径 + 对齐的大小）
+echo -e "${GREEN}可用的测试程序：${NC}"
+test_rows=()
+test_maxlen=0
+for exe in build/Test*; do
+    if [ -x "$exe" ]; then
+        size=$(stat -c %s "$exe" 2>/dev/null || stat -f %z "$exe")
+        hsize=$(human_size "$size")
+        test_rows+=("$exe|$hsize")
+        (( ${#exe} > test_maxlen )) && test_maxlen=${#exe}
+    fi
+done
+if [ ${#test_rows[@]} -gt 0 ]; then
+    for row in "${test_rows[@]}"; do
+        path="${row%%|*}"
+        hsize="${row##*|}"
+        printf "  %-*s  %12s\n" "$test_maxlen" "$path" "$hsize"
+    done
+else
+    echo "  (无)"
+fi
 
 # 运行所有测试程序（如果指定了-t选项）
 if [ "$RUN_ALL_TESTS" = true ]; then

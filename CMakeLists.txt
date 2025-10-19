@@ -19,66 +19,74 @@ set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "Configurations" FORC
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 递归查找MB_DDF库源文件（排除Test文件夹）
-file(GLOB_RECURSE LIB_SOURCES CONFIGURE_DEPENDS
+# 递归查找核心库源文件（不含 PhysicalLayer）
+file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
     "src/MB_DDF/DDS/*.cpp"
     "src/MB_DDF/Debug/*.cpp"
     "src/MB_DDF/Monitor/*.cpp"
+)
+
+# 递归查找物理层库源文件
+file(GLOB_RECURSE PHYSICAL_SOURCES CONFIGURE_DEPENDS
     "src/MB_DDF/PhysicalLayer/*.cpp"
 )
 
-# 递归查找所有头文件
+# 递归查找所有头文件（用于 IDE 展示与包含路径）
 file(GLOB_RECURSE HEADERS CONFIGURE_DEPENDS
     "src/MB_DDF/*.h"
     "src/MB_DDF/*.hpp"
 )
 
-# 创建MB_DDF静态库（避免重复编译）
-add_library(MB_DDF_LIB STATIC ${LIB_SOURCES} ${HEADERS})
+# 创建两个静态库：核心库与物理层库
+add_library(MB_DDF_CORE STATIC ${CORE_SOURCES} ${HEADERS})
+add_library(MB_DDF_PHYSICAL STATIC ${PHYSICAL_SOURCES} ${HEADERS})
 
 # 为库添加包含目录
-target_include_directories(MB_DDF_LIB PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-)
-
-# 为库链接必要的系统库
-target_link_libraries(MB_DDF_LIB PUBLIC 
-    pthread 
-    rt 
-)
+foreach(TGT IN ITEMS MB_DDF_CORE MB_DDF_PHYSICAL)
+    target_include_directories(${TGT} PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_link_libraries(${TGT} PUBLIC pthread rt)
+endforeach()
 
 # 查找所有Test程序
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
     "src/MB_DDF/Test/Test*.cpp"
 )
 
-# 为每个Test程序创建可执行文件
+# 为每个Test程序创建可执行文件并按需链接库
 foreach(TEST_SOURCE ${TEST_SOURCES})
     # 获取文件名（不含路径和扩展名）
     get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
-    
+
     # 创建可执行文件（只包含Test源文件）
     add_executable(${TEST_NAME} ${TEST_SOURCE})
-    
-    # 链接MB_DDF静态库
-    target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_LIB)
+
+    # 链接策略：默认仅链接核心库，TestMonitor 额外链接物理层库
+    if(TEST_NAME STREQUAL "TestMonitor")
+        target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_PHYSICAL)
+    else()
+        target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE)
+    endif()
 endforeach()
 
 # 设置不同构建类型的编译选项
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    # Debug 构建选项 - 应用到静态库
-    target_compile_options(MB_DDF_LIB PRIVATE
-        -g           # 生成调试信息
-        -O0          # 禁用优化
-        -Wall        # 启用所有警告
-        -Wextra      # 启用额外警告
-        -pedantic    # 严格标准检查
-    )
-    
+    # Debug 构建选项 - 应用到两个静态库
+    foreach(TGT IN ITEMS MB_DDF_CORE MB_DDF_PHYSICAL)
+        target_compile_options(${TGT} PRIVATE
+            -g           # 生成调试信息
+            -O0          # 禁用优化
+            -Wall        # 启用所有警告
+            -Wextra      # 启用额外警告
+            -pedantic    # 严格标准检查
+        )
+    endforeach()
+
     # 设置调试器友好选项
     set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -g")
-    
+
     # 添加调试目标（以第一个Test程序为例）
     if(TEST_SOURCES)
         list(GET TEST_SOURCES 0 FIRST_TEST)
@@ -91,17 +99,26 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         )
     endif()
 else()
-    # Release 构建选项 - 应用到静态库
-    target_compile_options(MB_DDF_LIB PRIVATE
-        -O3          # 最大优化
-        -DNDEBUG     # 禁用断言
-        -Werror      # 将警告视为错误
-    )
-    
-    # 链接时优化
-    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(MB_DDF_LIB PRIVATE -flto)
-        set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto")
+    # Release 构建选项 - 应用到两个静态库
+    foreach(TGT IN ITEMS MB_DDF_CORE MB_DDF_PHYSICAL)
+        target_compile_options(${TGT} PRIVATE
+            -O3          # 最大优化
+            -DNDEBUG     # 禁用断言
+            -Werror      # 将警告视为错误
+        )
+    endforeach()
+
+    # 链接时优化（根据编译器选择更合适的 LTO 模式）
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        foreach(TGT IN ITEMS MB_DDF_CORE MB_DDF_PHYSICAL)
+            target_compile_options(${TGT} PRIVATE -flto=auto)
+        endforeach()
+        set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto=auto -s")
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        foreach(TGT IN ITEMS MB_DDF_CORE MB_DDF_PHYSICAL)
+            target_compile_options(${TGT} PRIVATE -flto=thin)
+        endforeach()
+        set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto=thin -s")
     endif()
 endif()
 
@@ -117,8 +134,9 @@ endforeach()
 add_custom_target(info
     COMMAND ${CMAKE_COMMAND} -E echo "Build Type: ${CMAKE_BUILD_TYPE}"
     COMMAND ${CMAKE_COMMAND} -E echo "Compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}"
-    COMMAND ${CMAKE_COMMAND} -E echo "Library Sources: ${LIB_SOURCES}"
+    COMMAND ${CMAKE_COMMAND} -E echo "Core Sources: ${CORE_SOURCES}"
+    COMMAND ${CMAKE_COMMAND} -E echo "Physical Sources: ${PHYSICAL_SOURCES}"
     COMMAND ${CMAKE_COMMAND} -E echo "Test Programs: ${TEST_SOURCES}"
-    COMMAND ${CMAKE_COMMAND} -E echo "Static Library: MB_DDF_LIB (compiled once, linked to all tests)"
+    COMMAND ${CMAKE_COMMAND} -E echo "Static Libraries: MB_DDF_CORE, MB_DDF_PHYSICAL"
     COMMENT "Displaying build information"
 )

@@ -1,0 +1,158 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug: TestMonitor",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/TestMonitor",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "setupCommands": [
+        { "description": "Enable pretty printing", "text": "-enable-pretty-printing", "ignoreFailures": true }
+      ],
+      "preLaunchTask": "Build Debug"
+    },
+    {
+      "name": "Debug: TestPub1",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/TestPub1",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "setupCommands": [
+        { "description": "Enable pretty printing", "text": "-enable-pretty-printing", "ignoreFailures": true }
+      ],
+      "preLaunchTask": "Build Debug"
+    },
+    {
+      "name": "Debug: TestPub2",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/TestPub2",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "setupCommands": [
+        { "description": "Enable pretty printing", "text": "-enable-pretty-printing", "ignoreFailures": true }
+      ],
+      "preLaunchTask": "Build Debug"
+    },
+    {
+      "name": "Debug: TestSub1",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/TestSub1",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "setupCommands": [
+        { "description": "Enable pretty printing", "text": "-enable-pretty-printing", "ignoreFailures": true }
+      ],
+      "preLaunchTask": "Build Debug"
+    },
+    {
+      "name": "Debug: TestSub2",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/TestSub2",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "setupCommands": [
+        { "description": "Enable pretty printing", "text": "-enable-pretty-printing", "ignoreFailures": true }
+      ],
+      "preLaunchTask": "Build Debug"
+    },
+    {
+      "name": "Debug: TestSub3",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/TestSub3",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "setupCommands": [
+        { "description": "Enable pretty printing", "text": "-enable-pretty-printing", "ignoreFailures": true }
+      ],
+      "preLaunchTask": "Build Debug"
+    },
+    {
+      "name": "Debug: TestFuncAutoPilot",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/TestFuncAutoPilot",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "setupCommands": [
+        { "description": "Enable pretty printing", "text": "-enable-pretty-printing", "ignoreFailures": true }
+      ],
+      "preLaunchTask": "Build Debug"
+    },
+    {
+      "name": "Debug: TestFuncFlyControl",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/TestFuncFlyControl",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "setupCommands": [
+        { "description": "Enable pretty printing", "text": "-enable-pretty-printing", "ignoreFailures": true }
+      ],
+      "preLaunchTask": "Build Debug"
+    },
+    {
+      "name": "Debug: TestFuncHelmControl",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/TestFuncHelmControl",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "setupCommands": [
+        { "description": "Enable pretty printing", "text": "-enable-pretty-printing", "ignoreFailures": true }
+      ],
+      "preLaunchTask": "Build Debug"
+    }
+  ]
+}
