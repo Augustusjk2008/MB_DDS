@@ -11,7 +11,7 @@
 
 #pragma once
 
-#include "BasicTypes.h"
+#include "MB_DDF/PhysicalLayer/BasicTypes.h"
 
 namespace MB_DDF {
 namespace PhysicalLayer {
@@ -104,6 +104,15 @@ public:
      * 适用于需要同步等待数据的应用场景。
      */
     virtual int32_t receive(uint8_t* buffer, uint32_t buffer_size, Address& src_addr, uint32_t timeout_us) = 0;
+    
+    /**
+     * @brief 注册接收回调
+     * @param cb 接收回调函数，当链路收到数据时调用
+     * 
+     * 设置接收回调后，在链路处于OPEN状态时将异步接收数据并调用回调。
+     * 传入空回调（nullptr）将禁用异步接收。
+     */
+    virtual void setReceiveCallback(ReceiveCallback cb) = 0;
     
     /**
      * @brief 获取链路当前状态

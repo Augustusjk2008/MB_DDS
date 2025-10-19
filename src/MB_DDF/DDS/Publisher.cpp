@@ -12,7 +12,7 @@ namespace MB_DDF {
 namespace DDS {
 
 Publisher::Publisher(TopicMetadata* metadata, RingBuffer* ring_buffer, const std::string& publisher_name)
-    : metadata_(metadata), ring_buffer_(ring_buffer), sequence_number_(0), publisher_name_(publisher_name) {
+    : metadata_(metadata), ring_buffer_(ring_buffer), publisher_name_(publisher_name) {
     // 构造函数直接绑定metadata，不需要判断topic是否存在
     // 生成唯一的发布者ID
     std::random_device rd;

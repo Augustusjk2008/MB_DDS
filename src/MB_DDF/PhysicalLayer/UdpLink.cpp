@@ -9,11 +9,12 @@
  * 使用POSIX socket API实现跨平台的UDP网络通信。
  */
 
-#include "UdpLink.h"
+#include "MB_DDF/PhysicalLayer/UdpLink.h"
 #include <cstring>
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/select.h>
+#include <vector>
 
 namespace MB_DDF {
 namespace PhysicalLayer {
@@ -127,6 +128,12 @@ bool UdpLink::open() {
     }
     
     setStatus(LinkStatus::OPEN);
+    
+    // 如果已设置接收回调，启动接收线程
+    if (recv_cb_) {
+        startReceiveLoop();
+    }
+    
     return true;
 }
 
@@ -148,6 +155,9 @@ bool UdpLink::close() {
     if (status_ == LinkStatus::CLOSED) {
         return true;  // 已经关闭
     }
+    
+    // 停止接收线程
+    stopReceiveLoop();
     
     // 关闭socket
     closeSocket();
@@ -576,5 +586,54 @@ Address UdpLink::sockaddrToAddress(const struct sockaddr_in& sockaddr) {
     return Address::createUDP(ip, port);
 }
 
+void UdpLink::startReceiveLoop() {
+    if (recv_running_.load() || !recv_cb_ || socket_fd_ < 0) {
+        return;
+    }
+    recv_running_.store(true);
+    recv_thread_ = std::thread([this]() {
+        std::vector<uint8_t> buffer(config_.mtu ? config_.mtu : 1500);
+        uint32_t timeout_us = config_.timeout_ms > 0 ? config_.timeout_ms * 1000u : 100000u; // 默认100ms阻塞等待
+        while (recv_running_.load()) {
+            if (status_ != LinkStatus::OPEN) {
+                // 链路非打开状态，避免忙轮询
+                usleep(1000);
+                continue;
+            }
+            Address src;
+            int32_t n = this->receive(buffer.data(), static_cast<uint32_t>(buffer.size()), src, timeout_us);
+            if (n > 0 && recv_cb_) {
+                recv_cb_(buffer.data(), static_cast<uint32_t>(n), src);
+            } else if (n < 0) {
+                // 出错，短暂休眠避免busy-loop
+                usleep(1000);
+            }
+            // n == 0 表示超时，继续等待
+        }
+    });
+}
+ 
+void UdpLink::stopReceiveLoop() {
+    if (!recv_running_.load()) {
+        return;
+    }
+    recv_running_.store(false);
+    if (recv_thread_.joinable()) {
+        recv_thread_.join();
+    }
+}
+ 
+void UdpLink::setReceiveCallback(ReceiveCallback cb) {
+    // 更新回调
+    recv_cb_ = std::move(cb);
+    
+    if (status_ == LinkStatus::OPEN) {
+        if (recv_cb_) {
+            startReceiveLoop();
+        } else {
+            stopReceiveLoop();
+        }
+    }
+}
 }  // namespace PhysicalLayer
 }  // namespace MB_DDF

@@ -11,11 +11,13 @@
 
 #pragma once
 
-#include "BasePhysicalLink.h"
+#include "MB_DDF/PhysicalLayer/BasePhysicalLink.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <thread>
+#include <atomic>
 
 namespace MB_DDF {
 namespace PhysicalLayer {
@@ -44,6 +46,23 @@ private:
     int socket_fd_;                     ///< UDP socket文件描述符，-1表示未创建
     struct sockaddr_in local_sockaddr_; ///< 本地socket地址结构体
     struct sockaddr_in remote_sockaddr_;///< 远程socket地址结构体（用于点对点通信）
+
+    // 异步接收支持
+    ReceiveCallback recv_cb_{};         ///< 接收回调（可选）
+    std::thread recv_thread_;           ///< 接收线程
+    std::atomic<bool> recv_running_{false}; ///< 接收线程运行标志
+    
+    /**
+     * @brief 启动接收线程循环
+     * 
+     * 在链路OPEN且已注册回调时启动。
+     */
+    void startReceiveLoop();
+
+    /**
+     * @brief 停止接收线程循环
+     */
+    void stopReceiveLoop();
     
     /**
      * @brief 创建UDP socket
@@ -185,6 +204,12 @@ public:
      * 在指定超时时间内等待数据到达。
      */
     int32_t receive(uint8_t* buffer, uint32_t buffer_size, Address& src_addr, uint32_t timeout_us) override;
+
+    /**
+     * @brief 注册接收回调
+     * @param cb 接收回调函数
+     */
+    void setReceiveCallback(ReceiveCallback cb) override;
     
     /**
      * @brief 设置UDP链路特定的自定义参数
