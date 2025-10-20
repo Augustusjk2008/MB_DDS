@@ -12,9 +12,14 @@
 
 #include <cstdint>
 #include <chrono>
+#include <nmmintrin.h>
 
 namespace MB_DDF {
 namespace DDS {
+
+// 初始化CRC32表
+static uint32_t crc32_table[256];
+static bool table_initialized = false;
 
 /**
  * @struct MessageHeader
@@ -57,30 +62,50 @@ struct alignas(8) MessageHeader {
     }
     
     /**
+     * @brief 初始化CRC32表
+     * 
+     * 用于计算校验和时的查表加速。
+     * 确保在首次使用校验和计算前调用。
+     */
+    static void initialize_crc32_table() {
+        if (table_initialized) return;
+        for (uint32_t i = 0; i < 256; ++i) {
+            uint32_t crc = i;
+            for (int j = 0; j < 8; ++j) {  // 预计算每个字节的8位处理结果
+                if (crc & 1) {
+                    crc = (crc >> 1) ^ 0xEDB88320;
+                } else {
+                    crc >>= 1;
+                }
+            }
+            crc32_table[i] = crc;
+        }
+        table_initialized = true;
+    }
+    
+    /**
      * @brief 计算数据的校验
      * @param data 数据指针
      * @param size 数据大小
      * @return 计算得到的校验
      */
-    static uint32_t calculate_checksum(const void*, size_t) {
-        // const uint8_t* bytes = static_cast<const uint8_t*>(data);
-        // uint32_t crc = 0xFFFFFFFF;
-        
-        // for (size_t i = 0; i < size; ++i) {
-        //     crc ^= bytes[i];
-        //     for (int j = 0; j < 8; ++j) {
-        //         if (crc & 1) {
-        //             crc = (crc >> 1) ^ 0xEDB88320;
-        //         } else {
-        //             crc >>= 1;
-        //         }
-        //     }
-        // }
-        
-        // return ~crc;
+    static uint32_t calculate_checksum(const void* data, size_t size) {
+        // 空指针或零大小数据返回0
+        if (data == nullptr || size == 0) {
+            return 0;
+        }
 
-        // 上述代码仅为示例，当前不计算校验，等待任务需求确定
-        return 0;
+        // 校验和计算采用CRC32算法，未考虑字节序
+        initialize_crc32_table();  // 确保表已初始化
+        const uint8_t* bytes = static_cast<const uint8_t*>(data);
+        uint32_t crc = 0xFFFFFFFF;
+
+        for (size_t i = 0; i < size; ++i) {
+            // 用当前CRC的低8位查表，再更新CRC
+            crc = (crc >> 8) ^ crc32_table[(crc & 0xFF) ^ bytes[i]];
+        }
+
+        return ~crc;
     }
     
     /**
@@ -100,15 +125,6 @@ struct alignas(8) MessageHeader {
      */
     bool verify_checksum(const void* data, size_t size) const {
         return checksum == calculate_checksum(data, size);
-    }
-    
-    /**
-     * @brief 验证校验和（无参数版本，用于Message结构）
-     * @return 校验和正确返回true，否则返回false
-     */
-    bool verify_checksum() const {
-        // 当前实现中校验和计算被注释掉，总是返回true
-        return true;
     }
 };
 
