@@ -124,7 +124,7 @@ private:
     std::unique_ptr<SharedMemoryManager> shm_manager_;          ///< 共享内存管理器
     std::unique_ptr<TopicRegistry> topic_registry_;             ///< Topic注册表管理器
     std::unordered_map<TopicMetadata*, std::unique_ptr<RingBuffer>> topic_buffers_; ///< TopicMetadata指针到RingBuffer指针的映射
-    std::mutex topic_buffers_mutex_;                            ///< 保护topic_buffers_的互斥锁
+    // std::mutex topic_buffers_mutex_;                            ///< 保护topic_buffers_的互斥锁
     bool initialized_;                                          ///< 初始化状态标志
     
     /**

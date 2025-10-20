@@ -47,8 +47,8 @@ int main(int argc, char* argv[]) {
     auto& dds = MB_DDF::DDS::DDSCore::instance();
     dds.initialize(128 * 1024 * 1024);
         
-    // 创建监控器实例，1秒扫描间隔，3秒活跃超时
-    MB_DDF::Monitor::DDSMonitor monitor(200, 3000);  
+    // 创建监控器实例，0.4秒扫描间隔，3秒活跃超时
+    MB_DDF::Monitor::DDSMonitor monitor(400, 3000);  
           
     // 初始化监控器
     if (!monitor.initialize(dds)) {

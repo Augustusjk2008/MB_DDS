@@ -170,7 +170,7 @@ bool RingBuffer::read_latest(SubscriberState* subscriber, Message*& out_message)
 bool RingBuffer::set_publisher(uint64_t publisher_id, const std::string& publisher_name) {
     // 检查是否已存在
     if (header_->publisher_id != 0) {
-        LOG_ERROR << "set_publisher failed, publisher_id " << publisher_id << " already registered";
+        LOG_ERROR << "set_publisher failed, publisher already registered";
         // 如果名字相同，允许更新id
         if (std::strcmp(header_->publisher_name, publisher_name.c_str()) == 0) {
             header_->publisher_id = publisher_id;

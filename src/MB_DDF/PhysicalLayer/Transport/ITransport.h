@@ -51,15 +51,23 @@ struct PcieAddress {
 /**
  * @struct TransportConfig
  * @brief 统一的传输配置
+ * 
+ * 字段说明：
+ * - backend: 选择后端实现（PCIE/XDMA/…）。
+ * - device_path: 对于 XDMA，建议使用基路径，如 "/dev/xdma0"，
+ *   实现会自动派生 "_user"、"_h2c_<ch>"、"_c2h_<ch>"、"_events_<n>"。
+ * - dma_h2c_channel/dma_c2h_channel: XDMA 的 DMA 通道编号，<0 表示不打开。
+ * - event_number: XDMA 的事件设备编号（0-15），<0 表示不打开事件设备。
  */
 struct TransportConfig {
     Backend backend{Backend::PCIE};
     PcieAddress pcie;            ///< 当 backend==PCIE 时使用
 
     // 预留扩展字段：如 UIO/XDMA 的设备路径、DMA 通道号等
-    std::string device_path;     ///< 后端设备路径（可选）
-    int dma_h2c_channel{-1};     ///< 主机到卡（H2C）通道（可选）
-    int dma_c2h_channel{-1};     ///< 卡到主机（C2H）通道（可选）
+    std::string device_path;     ///< 后端设备路径（可选，XDMA 推荐基路径，如 "/dev/xdma0"）
+    int dma_h2c_channel{-1};     ///< 主机到卡（H2C）通道（可选，<0 表示禁用）
+    int dma_c2h_channel{-1};     ///< 卡到主机（C2H）通道（可选，<0 表示禁用）
+    int event_number{-1};        ///< XDMA 事件设备编号（0-15），<0 表示不启用事件
 };
 
 /**

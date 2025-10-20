@@ -8,6 +8,7 @@
 #include "MB_DDF/Monitor/DDSMonitor.h"
 #include "MB_DDF/Monitor/SharedMemoryAccessor.h"
 #include "MB_DDF/Debug/Logger.h"
+#include <chrono>
 #include <sstream>
 #include <cstring>
 
@@ -76,8 +77,8 @@ void DDSMonitor::stop_monitoring() {
 
 DDSSystemSnapshot DDSMonitor::scan_system() {
     DDSSystemSnapshot snapshot;
-    snapshot.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
+    snapshot.timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
     
     if (!shm_accessor_ || !shm_accessor_->is_connected()) {
         return snapshot;
@@ -88,6 +89,10 @@ DDSSystemSnapshot DDSMonitor::scan_system() {
     
     // 获取所有topic的元数据
     auto topic_metadata_list = shm_accessor_->get_all_topics();
+    
+    // 统一使用同一时刻的当前时间（纳秒）进行活跃性判断
+    const uint64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
     
     for (auto* topic_meta : topic_metadata_list) {
         if (!topic_meta) continue;
@@ -109,16 +114,16 @@ DDSSystemSnapshot DDSMonitor::scan_system() {
         auto publisher_data = shm_accessor_->get_publisher_data(ring_layout);
         topic_info.has_publisher = publisher_data.is_valid;  // 使用实际的发布者检测结果
         
-        if (publisher_data.is_valid) {
+        if (publisher_data.is_valid && ring_layout.header) {
             PublisherInfo pub_info;
             pub_info.publisher_id = publisher_data.publisher_id;
             pub_info.publisher_name = publisher_data.publisher_name;
             pub_info.topic_name = topic_info.topic_name;
             pub_info.topic_id = topic_info.topic_id;
             pub_info.last_sequence = publisher_data.current_sequence;
-            pub_info.is_active = is_active(ring_layout.header->timestamp, 
-                std::chrono::duration_cast<std::chrono::nanoseconds>(
-                    std::chrono::system_clock::now().time_since_epoch()).count());
+            // 使用一致的时钟源（steady_clock）读取最新消息时间戳
+            const uint64_t last_pub_ts = ring_layout.header->timestamp.load(std::memory_order_acquire);
+            pub_info.is_active = is_active(last_pub_ts, now_ns);
             
             snapshot.publishers.push_back(pub_info);
         }
@@ -136,9 +141,7 @@ DDSSystemSnapshot DDSMonitor::scan_system() {
             sub_info.read_pos = sub_data.read_pos;
             sub_info.last_read_sequence = sub_data.last_read_sequence;
             sub_info.last_active_time = sub_data.last_active_timestamp;
-            sub_info.is_active = is_active(sub_data.last_active_timestamp, 
-                std::chrono::duration_cast<std::chrono::nanoseconds>(
-                    std::chrono::system_clock::now().time_since_epoch()).count());
+            sub_info.is_active = is_active(sub_data.last_active_timestamp, now_ns);
             
             snapshot.subscribers.push_back(sub_info);
         }

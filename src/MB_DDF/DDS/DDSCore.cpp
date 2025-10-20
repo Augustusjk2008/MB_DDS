@@ -26,9 +26,16 @@ DDSCore& DDSCore::instance() {
     return instance;
 }
 
-std::shared_ptr<Publisher> DDSCore::create_publisher(const std::string& topic_name) {    
+std::shared_ptr<Publisher> DDSCore::create_publisher(const std::string& topic_name) {     
+    // 等待信号量，确保对共享内存的访问是互斥的
+    if (sem_wait(shm_manager_->get_semaphore()) != 0) {
+        LOG_ERROR << "create_or_get_topic_buffer failed, sem_wait failed";
+        return nullptr;
+    }
+
     // 创建或获取环形缓冲区
     RingBuffer* buffer = create_or_get_topic_buffer(topic_name);
+    sem_post(shm_manager_->get_semaphore()); // 发布信号量，允许其他进程访问共享内存
     if (buffer == nullptr) {
         LOG_ERROR << "failed to create or get topic buffer, topic name: " << topic_name;
         return nullptr; // 未找到匹配的环形缓冲区
@@ -55,8 +62,15 @@ std::shared_ptr<Publisher> DDSCore::create_writer(const std::string& topic_name)
 } 
 
 std::shared_ptr<Subscriber> DDSCore::create_subscriber(const std::string& topic_name, const MessageCallback& callback) {
+    // 等待信号量，确保对共享内存的访问是互斥的
+    if (sem_wait(shm_manager_->get_semaphore()) != 0) {
+        LOG_ERROR << "create_or_get_topic_buffer failed, sem_wait failed";
+        return nullptr;
+    }
+    
     // 创建或获取环形缓冲区
     RingBuffer* buffer = create_or_get_topic_buffer(topic_name);
+    sem_post(shm_manager_->get_semaphore()); // 发布信号量，允许其他进程访问共享内存
     if (buffer == nullptr) {
         LOG_ERROR << "failed to create or get topic buffer, topic name: " << topic_name;
         return nullptr; // 未找到匹配的环形缓冲区
@@ -165,9 +179,6 @@ RingBuffer* DDSCore::create_or_get_topic_buffer(const std::string& topic_name) {
         return nullptr;
     }
     
-    // 使用互斥锁保护topic_buffers_的访问
-    std::lock_guard<std::mutex> lock(topic_buffers_mutex_);
-    
     // 首先尝试从TopicRegistry获取已存在的Topic元数据
     TopicMetadata* metadata = topic_registry_->get_topic_metadata(topic_name);
     
@@ -247,9 +258,6 @@ TopicMetadata* DDSCore::find_topic(const std::string& topic_name) {
     if (!initialized_) {
         return nullptr;
     }
-    
-    // 使用互斥锁保护topic_buffers_的访问
-    std::lock_guard<std::mutex> lock(topic_buffers_mutex_);
     
     // 遍历topic_buffers_映射，查找匹配的TopicMetadata
     for (const auto& pair : topic_buffers_) {
