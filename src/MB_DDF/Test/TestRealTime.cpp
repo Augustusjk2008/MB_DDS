@@ -15,11 +15,11 @@ int main() {
     opt.use_new_thread = true;                 // 使用独立线程
     opt.sched_policy = SCHED_FIFO;             // 新线程调度策略：FIFO
     opt.priority = sched_get_priority_max(SCHED_FIFO); // 优先级设为最高
-    opt.cpu = 6;                               // 绑核到6号CPU
+    opt.cpu = 6;                               // 绑核
     opt.signal_no = SIGRTMIN;                  // 使用实时信号
 
     auto my_timer 
-    = SystemTimer::start("1500us", my_callback, opt);
+    = SystemTimer::start("250us", my_callback, opt);
 
     std::cout << "press enter to stop" << std::endl;
     std::cin.get();

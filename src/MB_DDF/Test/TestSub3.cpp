@@ -19,7 +19,7 @@ int main() {
     auto subscriber_a = dds.create_subscriber("local://test_topic_d"
         , [](const void* data, size_t size, uint64_t timestamp) {
             // 计算延迟
-            uint64_t current_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+            uint64_t current_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
             uint64_t delay = current_time - timestamp;
 
             // 打印数据

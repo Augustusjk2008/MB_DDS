@@ -10,6 +10,7 @@
 
 #include "MB_DDF/DDS/DDSCore.h"
 #include "MB_DDF/Debug/Logger.h"
+#include "MB_DDF/DDS/SemaphoreGuard.h"
 
 #include <iostream>
 #include <fstream>
@@ -27,15 +28,17 @@ DDSCore& DDSCore::instance() {
 }
 
 std::shared_ptr<Publisher> DDSCore::create_publisher(const std::string& topic_name) {     
-    // 等待信号量，确保对共享内存的访问是互斥的
-    if (sem_wait(shm_manager_->get_semaphore()) != 0) {
-        LOG_ERROR << "create_or_get_topic_buffer failed, sem_wait failed";
-        return nullptr;
+    // 使用RAII守护对象保护共享内存访问
+    RingBuffer* buffer = nullptr;
+    {
+        SemaphoreGuard guard(shm_manager_->get_semaphore());
+        if (!guard.acquired()) {
+            LOG_ERROR << "create_or_get_topic_buffer failed, semaphore acquire failed";
+            return nullptr;
+        }
+        // 创建或获取环形缓冲区
+        buffer = create_or_get_topic_buffer(topic_name);
     }
-
-    // 创建或获取环形缓冲区
-    RingBuffer* buffer = create_or_get_topic_buffer(topic_name);
-    sem_post(shm_manager_->get_semaphore()); // 发布信号量，允许其他进程访问共享内存
     if (buffer == nullptr) {
         LOG_ERROR << "failed to create or get topic buffer, topic name: " << topic_name;
         return nullptr; // 未找到匹配的环形缓冲区
@@ -62,15 +65,17 @@ std::shared_ptr<Publisher> DDSCore::create_writer(const std::string& topic_name)
 } 
 
 std::shared_ptr<Subscriber> DDSCore::create_subscriber(const std::string& topic_name, const MessageCallback& callback) {
-    // 等待信号量，确保对共享内存的访问是互斥的
-    if (sem_wait(shm_manager_->get_semaphore()) != 0) {
-        LOG_ERROR << "create_or_get_topic_buffer failed, sem_wait failed";
-        return nullptr;
+    // 使用RAII守护对象保护共享内存访问
+    RingBuffer* buffer = nullptr;
+    {
+        SemaphoreGuard guard(shm_manager_->get_semaphore());
+        if (!guard.acquired()) {
+            LOG_ERROR << "create_or_get_topic_buffer failed, semaphore acquire failed";
+            return nullptr;
+        }
+        // 创建或获取环形缓冲区
+        buffer = create_or_get_topic_buffer(topic_name);
     }
-    
-    // 创建或获取环形缓冲区
-    RingBuffer* buffer = create_or_get_topic_buffer(topic_name);
-    sem_post(shm_manager_->get_semaphore()); // 发布信号量，允许其他进程访问共享内存
     if (buffer == nullptr) {
         LOG_ERROR << "failed to create or get topic buffer, topic name: " << topic_name;
         return nullptr; // 未找到匹配的环形缓冲区

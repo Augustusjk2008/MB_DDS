@@ -44,8 +44,8 @@ public:
     bool readReg16(uint64_t offset, uint16_t& val) const;
     bool writeReg8(uint64_t offset, uint8_t val);
     bool writeReg16(uint64_t offset, uint16_t val);
-
     int waitEvent(uint32_t timeout_ms) override;
+    int getEventFd() const override;
 
     bool dmaWrite(int channel, const void* buf, size_t len) override;
     bool dmaRead(int channel, void* buf, size_t len) override;

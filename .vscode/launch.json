@@ -5,7 +5,7 @@
       "name": "Debug: TestMonitor",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/build/TestMonitor",
+      "program": "${workspaceFolder}/build/host/TestMonitor",
       "args": [],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",

@@ -10,8 +10,8 @@
 
 #pragma once
 
-#include "RingBuffer.h"
-#include "TopicRegistry.h"
+#include "MB_DDF/DDS/RingBuffer.h"
+#include "MB_DDF/DDS/TopicRegistry.h"
 #include <cstddef>
 #include <string>
 #include <functional>
@@ -79,28 +79,25 @@ public:
     bool bind_to_cpu(int cpu_id);
 
     /**
-     * @brief 从环形缓冲区读取下一条消息
-     * @param data 接收消息数据的指针
-     * @param size 接收消息数据的最大大小
-     * @return 实际读取的消息大小（0表示无消息）
-     */
-    size_t read_next(void* data, size_t size);
-
-    /**
-     * @brief 从环形缓冲区读取最新消息
-     * @param data 接收消息数据的指针
-     * @param size 接收消息数据的最大大小
-     * @return 实际读取的消息大小（0表示无消息）
-     */
-    size_t read_latest(void* data, size_t size);
-
-    /**
      * @brief 从环形缓冲区读取消息
      * @param data 接收消息数据的指针
      * @param size 接收消息数据的最大大小
+     * @param latest 是否读取最新消息（默认true）
      * @return 实际读取的消息大小（0表示无消息）
      */
-    size_t read(void* data, size_t size);
+    size_t read(void* data, size_t size, bool latest = true);
+
+    /**
+     * @brief 获取订阅者工作线程
+     * @return 工作线程对象引用
+     */
+    std::thread* get_thread() { 
+        if (callback_) {
+            return &worker_thread_; 
+        } else {
+            return nullptr;
+        }
+    }
 
 private:
     TopicMetadata* metadata_;       ///< Topic元数据指针
@@ -120,6 +117,22 @@ private:
      * 持续从环形缓冲区中读取消息并调用回调函数
      */
     void worker_loop();
+
+    /**
+     * @brief 从环形缓冲区读取下一条消息
+     * @param data 接收消息数据的指针
+     * @param size 接收消息数据的最大大小
+     * @return 实际读取的消息大小（0表示无消息）
+     */
+    size_t read_next(void* data, size_t size);
+
+    /**
+     * @brief 从环形缓冲区读取最新消息
+     * @param data 接收消息数据的指针
+     * @param size 接收消息数据的最大大小
+     * @return 实际读取的消息大小（0表示无消息）
+     */
+    size_t read_latest(void* data, size_t size);
 };
 
 } // namespace DDS

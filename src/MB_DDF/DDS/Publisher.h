@@ -10,8 +10,8 @@
 
 #pragma once
 
-#include "RingBuffer.h"
-#include "TopicRegistry.h"
+#include "MB_DDF/DDS/RingBuffer.h"
+#include "MB_DDF/DDS/TopicRegistry.h"
 #include <string>
 #include <cstdint>
 

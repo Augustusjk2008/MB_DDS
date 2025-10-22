@@ -199,8 +199,16 @@ size_t Subscriber::read_latest(void* data, size_t size) {
     return 0; // 无消息
 }
 
-size_t Subscriber::read(void* data, size_t size) {
-    return read_latest(data, size);
+size_t Subscriber::read(void* data, size_t size, bool latest) {
+    // 绑定了回调函数时不允许自行读取
+    if (callback_) {
+        return 0; 
+    }
+    if (latest) {
+        return read_latest(data, size);
+    } else {
+        return read_next(data, size);
+    }
 }
 
 } // namespace DDS

@@ -39,7 +39,11 @@ long long ChronoHelper::calculate_average_interval(Stats& s) {
     for (const auto& entry : s.recent_intervals) {
         total_interval += entry.second;
     }
-    return total_interval / s.recent_intervals.size();
+    if (total_interval % s.recent_intervals.size() != 0) {
+        return total_interval / s.recent_intervals.size() + 1;
+    } else {
+        return total_interval / s.recent_intervals.size();
+    }
 }
 
 // 清理超过1秒的历史数据

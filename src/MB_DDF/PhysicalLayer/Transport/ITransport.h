@@ -91,6 +91,8 @@ public:
 
     // 事件等待（如中断/epoll 等）。未实现则返回 0 表示超时，<0 表示错误，>0 表示事件号
     virtual int waitEvent(uint32_t timeout_ms) = 0;
+    // 可选：返回用于 epoll 的底层事件 fd；<0 表示不支持 fd 事件模型
+    virtual int getEventFd() const { return -1; }
 
     // DMA（可选扩展）：默认由具体后端决定是否支持
     virtual bool dmaWrite(int channel, const void* buf, size_t len) { (void)channel; (void)buf; (void)len; return false; }

@@ -78,11 +78,24 @@ MB_DDF/
 # 清理后重新构建
 ./build.sh -c
 
-# 构建并自动运行所有测试程序
+# 自动运行所有测试程序
 ./build.sh -t
 
 # 查看帮助信息
 ./build.sh -h
+
+# 交叉编译（Yocto/UCAS aarch64）
+# 先加载交叉编译环境
+source /opt/wanghuo/v2.0.0-rc4/environment-setup-armv8a-ucas-linux
+
+# 交叉编译 Debug
+./build.sh --cross
+
+# 清理后交叉编译 Debug
+./build.sh -c --cross
+
+# 交叉编译 Release
+./build.sh -r --cross
 ```
 
 ### 2. 手动使用CMake
@@ -98,11 +111,60 @@ cmake .. -DCMAKE_BUILD_TYPE=Debug
 cmake .. -DCMAKE_BUILD_TYPE=Release
 
 # 编译
-make -j$(nproc)
+cmake --build . --parallel $(nproc)
 
 # 查看构建信息
-make info
+cmake --build . --target info
 ```
+
+#### 交叉编译手动配置
+
+```bash
+# 加载环境（会设置 OECORE_*、SDKTARGETSYSROOT 等变量）
+source /opt/wanghuo/v2.0.0-rc4/environment-setup-armv8a-ucas-linux
+
+mkdir build && cd build
+
+# 优先使用环境提供的工具链文件
+cmake .. -DCMAKE_BUILD_TYPE=Release -DCROSS_COMPILE=ON \
+  -DCMAKE_TOOLCHAIN_FILE=$OECORE_CMAKE_TOOLCHAIN_FILE \
+  -DCMAKE_SYSROOT=$SDKTARGETSYSROOT \
+  -DCMAKE_EXE_LINKER_FLAGS="--sysroot=$SDKTARGETSYSROOT" \
+  -DCMAKE_SHARED_LINKER_FLAGS="--sysroot=$SDKTARGETSYSROOT" \
+  -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+  -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
+
+# 如果没有工具链文件（非Yocto环境），手动指定编译器与sysroot
+cmake .. -DCMAKE_BUILD_TYPE=Release -DCROSS_COMPILE=ON \
+  -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+  -DCMAKE_SYSROOT=/opt/wanghuo/v2.0.0-rc4/sysroots/armv8a-ucas-linux \
+  -DCMAKE_C_COMPILER=aarch64-ucas-linux-gcc \
+  -DCMAKE_CXX_COMPILER=aarch64-ucas-linux-g++ \
+  -DCMAKE_EXE_LINKER_FLAGS="--sysroot=/opt/wanghuo/v2.0.0-rc4/sysroots/armv8a-ucas-linux" \
+  -DCMAKE_SHARED_LINKER_FLAGS="--sysroot=/opt/wanghuo/v2.0.0-rc4/sysroots/armv8a-ucas-linux" \
+  -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+  -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
+
+cmake --build . --parallel $(nproc)
+```
+
+### IDE/Clangd 配置（交叉编译场景）
+
+如果你使用clang等编译器做代码检查，在交叉编译（aarch64）后，clangd 需要从交叉工具链查询标准库与 sysroot 的包含路径，否则可能报错找不到 `<cstdint>` 等标准头（但不影响实际使用）。
+
+- 确认生成 `build/compile_commands.json`（项目已启用 `CMAKE_EXPORT_COMPILE_COMMANDS ON`）。
+- VSCode 的 `.vscode/settings.json` 中建议设置：
+  - `"--compile-commands-dir=build"` 指向构建目录
+  - `"--query-driver=/opt/wanghuo/v2.0.0-rc4/sysroots/x86_64-ucassdk-linux/usr/bin/aarch64-ucas-linux/*"` 允许 clangd 向交叉编译器查询系统包含路径
+- 可选：为部分工具兼容性创建软链接
+  - `ln -sf build/compile_commands.json ./compile_commands.json`
+- 修改后重启 VSCode 或执行 Clangd: Restart language server。
+
+说明：`--query-driver` 是 clangd 的官方机制，用于识别 GCC/Clang 驱动并抽取其默认包含路径，与 Yocto/UCAS SDK 的 `OECORE_*` 环境配合可正确解析交叉环境的标准库。
 
 ### 3. 运行测试程序
 

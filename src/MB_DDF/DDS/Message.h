@@ -12,7 +12,6 @@
 
 #include <cstdint>
 #include <chrono>
-#include <nmmintrin.h>
 
 namespace MB_DDF {
 namespace DDS {

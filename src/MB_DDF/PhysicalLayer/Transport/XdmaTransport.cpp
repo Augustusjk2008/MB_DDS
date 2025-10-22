@@ -146,42 +146,54 @@ void XdmaTransport::close() {
 
 // 8/16/32 位寄存器读取/写入：与参考 C 程序保持功能一致，但避免每次 mmap。
 bool XdmaTransport::readReg8(uint64_t offset, uint8_t& val) const {
-    if (!user_base_ || offset + 1 > mapped_len_) return false;
+    if (!user_base_ || offset + 1 > mapped_len_) {
+        return false;
+    }
     volatile uint8_t* reg = reinterpret_cast<volatile uint8_t*>(static_cast<uint8_t*>(user_base_) + offset);
     val = *reg;
     return true;
 }
 
 bool XdmaTransport::readReg16(uint64_t offset, uint16_t& val) const {
-    if (!user_base_ || offset + 2 > mapped_len_) return false;
+    if (!user_base_ || offset + 2 > mapped_len_) {
+        return false;
+    }
     volatile uint16_t* reg = reinterpret_cast<volatile uint16_t*>(static_cast<uint8_t*>(user_base_) + offset);
     val = ltohs_u16(*reg);
     return true;
 }
 
 bool XdmaTransport::readReg32(uint64_t offset, uint32_t& val) const {
-    if (!user_base_ || offset + 4 > mapped_len_) return false;
+    if (!user_base_ || offset + 4 > mapped_len_) {
+        return false;
+    }
     volatile uint32_t* reg = reinterpret_cast<volatile uint32_t*>(static_cast<uint8_t*>(user_base_) + offset);
     val = ltohl_u32(*reg);
     return true;
 }
 
 bool XdmaTransport::writeReg8(uint64_t offset, uint8_t v) {
-    if (!user_base_ || offset + 1 > mapped_len_) return false;
+    if (!user_base_ || offset + 1 > mapped_len_) {
+        return false;
+    }
     volatile uint8_t* reg = reinterpret_cast<volatile uint8_t*>(static_cast<uint8_t*>(user_base_) + offset);
     *reg = v;
     return true;
 }
 
 bool XdmaTransport::writeReg16(uint64_t offset, uint16_t v) {
-    if (!user_base_ || offset + 2 > mapped_len_) return false;
+    if (!user_base_ || offset + 2 > mapped_len_) {
+        return false;
+    }
     volatile uint16_t* reg = reinterpret_cast<volatile uint16_t*>(static_cast<uint8_t*>(user_base_) + offset);
     *reg = htols_u16(v);
     return true;
 }
 
 bool XdmaTransport::writeReg32(uint64_t offset, uint32_t v) {
-    if (!user_base_ || offset + 4 > mapped_len_) return false;
+    if (!user_base_ || offset + 4 > mapped_len_) {
+        return false;
+    }
     volatile uint32_t* reg = reinterpret_cast<volatile uint32_t*>(static_cast<uint8_t*>(user_base_) + offset);
     *reg = htoll_u32(v);
     return true;
@@ -212,9 +224,15 @@ int XdmaTransport::waitEvent(uint32_t timeout_ms) {
     }
 }
 
+int XdmaTransport::getEventFd() const {
+    return events_fd_;
+}
+
 // 高层 DMA：按参考实现分块读写，避免一次性巨大 I/O。
 bool XdmaTransport::dmaWrite(int channel, const void* buf, size_t len) {
-    if (channel != cfg_.dma_h2c_channel || h2c_fd_ < 0 || !buf) return false;
+    if (channel != cfg_.dma_h2c_channel || h2c_fd_ < 0 || !buf) {
+        return false;
+    }
     const unsigned char* p = static_cast<const unsigned char*>(buf);
     size_t written = 0;
     while (written < len) {
@@ -228,7 +246,9 @@ bool XdmaTransport::dmaWrite(int channel, const void* buf, size_t len) {
 }
 
 bool XdmaTransport::dmaRead(int channel, void* buf, size_t len) {
-    if (channel != cfg_.dma_c2h_channel || c2h_fd_ < 0 || !buf) return false;
+    if (channel != cfg_.dma_c2h_channel || c2h_fd_ < 0 || !buf) {
+        return false;
+    }
     unsigned char* p = static_cast<unsigned char*>(buf);
     size_t readn = 0;
     while (readn < len) {
@@ -243,8 +263,12 @@ bool XdmaTransport::dmaRead(int channel, void* buf, size_t len) {
 
 // 兼容参考程序：支持指定设备偏移与缓冲区偏移（lseek + read/write）
 bool XdmaTransport::dmaWriteAt(int channel, const void* buf, size_t len, uint64_t dev_offset, size_t buf_offset) {
-    if (channel != cfg_.dma_h2c_channel || h2c_fd_ < 0 || !buf) return false;
-    if (::lseek(h2c_fd_, static_cast<off_t>(dev_offset), SEEK_SET) < 0) return false;
+    if (channel != cfg_.dma_h2c_channel || h2c_fd_ < 0 || !buf) {
+        return false;
+    }
+    if (::lseek(h2c_fd_, static_cast<off_t>(dev_offset), SEEK_SET) < 0) {
+        return false;
+    }
     const unsigned char* p = static_cast<const unsigned char*>(buf) + buf_offset;
     size_t written = 0;
     while (written < len) {
@@ -258,8 +282,12 @@ bool XdmaTransport::dmaWriteAt(int channel, const void* buf, size_t len, uint64_
 }
 
 bool XdmaTransport::dmaReadAt(int channel, void* buf, size_t len, uint64_t dev_offset, size_t buf_offset) {
-    if (channel != cfg_.dma_c2h_channel || c2h_fd_ < 0 || !buf) return false;
-    if (::lseek(c2h_fd_, static_cast<off_t>(dev_offset), SEEK_SET) < 0) return false;
+    if (channel != cfg_.dma_c2h_channel || c2h_fd_ < 0 || !buf) {
+        return false;
+    }
+    if (::lseek(c2h_fd_, static_cast<off_t>(dev_offset), SEEK_SET) < 0) {
+        return false;
+    }
     unsigned char* p = static_cast<unsigned char*>(buf) + buf_offset;
     size_t readn = 0;
     while (readn < len) {

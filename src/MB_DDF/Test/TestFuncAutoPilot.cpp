@@ -6,7 +6,7 @@
 // 无参数 main
 int main() {
     // 设置日志输出级别
-    // LOG_SET_LEVEL_TRACE();
+    // LOG_SET_LEVEL_DEBUG();
     LOG_SET_LEVEL_INFO();
     // 禁用时间戳输出
     LOG_DISABLE_TIMESTAMP();
@@ -41,14 +41,6 @@ int main() {
             std::string msg = "Hello, World! " + std::to_string(counter++);
             publisher->write(msg.c_str(), msg.size());
         }
-        // 仅当 subscriber 设置为无回调时才可主动读取数据，否则是线程不安全的
-        // 因为回调函数是在 DDS 线程中执行的，且已经在读取数据，而 read_latest 或 read_next 是在主线程中执行的
-        // 如果在有回调函数时再主动调用 read_latest 或 read_next，可能会导致数据丢失或不一致
-        // if (subscriber) {
-        //     char data[1024];
-        //     size_t size = sizeof(data);
-        //     subscriber->read_latest(data, size);
-        // }
     }
 
     return 0;

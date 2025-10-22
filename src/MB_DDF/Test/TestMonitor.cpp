@@ -62,21 +62,22 @@ int main(int argc, char* argv[]) {
     
     // 配置发送端
     MB_DDF::PhysicalLayer::LinkConfig sender_config;
-    sender_config.local_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.56.132", 9001); 
+    sender_config.local_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.1.28", 9001); 
     sender_config.mtu = 32768;
     
     // 目标地址
-    auto dest_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.56.1", 9002);
+    auto dest_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.1.100", 9002);
     
     
     if (!sender.initialize(sender_config) || !sender.open()) {
         LOG_ERROR << "Failed to initialize UdpLink sender";
-        return -1;
+        if (send_snapshot) {
+            return -1;
+        }
     }
 
     // 设置监控回调
     monitor.set_monitor_callback([&monitor, &sender, &dest_addr, print_info, send_snapshot](const MB_DDF::Monitor::DDSSystemSnapshot& snapshot) {
-
         if (print_info) {
             std::cout << "\n=== 监控快照 (时间戳: " << snapshot.timestamp << ") ===" << std::endl;
             std::cout << "DDS版本号: " << MB_DDF::Monitor::DDSMonitor::version_to_string(snapshot.dds_version) 

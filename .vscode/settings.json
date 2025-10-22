@@ -1,4 +1,4 @@
-{  
+{
     "files.associations": {
         "ratio": "cpp",
         "mutex": "cpp",
@@ -8,9 +8,9 @@
         "xmemory": "cpp"
     },
     "clangd.arguments": [
-        "--compile-commands-dir=.",
         "--background-index",
         "--clang-tidy",
-        "--header-insertion=iwyu"
+        "--header-insertion=iwyu",
+        "--query-driver=/usr/bin/clang++,/usr/bin/g++,/usr/bin/gcc,/usr/bin/cc,/opt/wanghuo/v2.0.0-rc4/sysroots/x86_64-ucassdk-linux/usr/bin/aarch64-ucas-linux/*"
     ]
 }

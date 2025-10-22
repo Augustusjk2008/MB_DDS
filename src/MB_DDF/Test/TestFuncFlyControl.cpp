@@ -21,8 +21,8 @@ int main() {
 
     // 主循环，持续发布数据
     while (true) {
-        // 间隔 0.1 秒
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // 间隔 0.5 秒
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
         if (publisher) {
             // 发布的数据带一个递增的数，方便查看
             static int counter = 0;

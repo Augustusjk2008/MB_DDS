@@ -22,6 +22,63 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 添加构建选项
 option(BUILD_TESTS "Build test programs" ON)
 option(BUILD_LIBS "Build static libraries" ON)
+option(CROSS_COMPILE "Enable cross-compilation for ARM aarch64" OFF)
+
+# 交叉编译配置（与 reference/make/Makefile 保持一致的默认值，可被外部覆盖）
+if(CROSS_COMPILE)
+    set(CROSS_SDK_DEFAULT "/opt/wanghuo/v2.0.0-rc4")
+    set(CROSS_SYSROOT_DEFAULT "${CROSS_SDK_DEFAULT}/sysroots/armv8a-ucas-linux")
+    set(CROSS_C_COMPILER_DEFAULT "aarch64-ucas-linux-gcc")
+    set(CROSS_CXX_COMPILER_DEFAULT "aarch64-ucas-linux-g++")
+
+    # 优先使用由环境脚本提供的工具链文件，避免与手动设置冲突
+    if(NOT DEFINED CMAKE_TOOLCHAIN_FILE AND DEFINED ENV{OECORE_CMAKE_TOOLCHAIN_FILE})
+        set(CMAKE_TOOLCHAIN_FILE "$ENV{OECORE_CMAKE_TOOLCHAIN_FILE}" CACHE FILEPATH "Yocto/OE toolchain file" FORCE)
+    endif()
+
+    # 若不存在工具链文件，再允许手动覆盖
+    if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+        set(CROSS_SDK "${CROSS_SDK}" CACHE PATH "Cross SDK root (optional)")
+        set(CROSS_SYSROOT "${CROSS_SYSROOT}" CACHE PATH "Cross sysroot path (optional)")
+        set(CROSS_C_COMPILER "${CROSS_C_COMPILER}" CACHE STRING "Cross C compiler executable")
+        set(CROSS_CXX_COMPILER "${CROSS_CXX_COMPILER}" CACHE STRING "Cross C++ compiler executable")
+
+        if(NOT CROSS_SYSROOT)
+            set(CROSS_SYSROOT "${CROSS_SYSROOT_DEFAULT}")
+        endif()
+        if(NOT CROSS_C_COMPILER)
+            set(CROSS_C_COMPILER "${CROSS_C_COMPILER_DEFAULT}")
+        endif()
+        if(NOT CROSS_CXX_COMPILER)
+            set(CROSS_CXX_COMPILER "${CROSS_CXX_COMPILER_DEFAULT}")
+        endif()
+
+        # 设置目标系统
+        set(CMAKE_SYSTEM_NAME Linux)
+        set(CMAKE_SYSTEM_PROCESSOR aarch64)
+
+        # 设置工具链
+        set(CMAKE_SYSROOT "${CROSS_SYSROOT}")
+        set(CMAKE_C_COMPILER "${CROSS_C_COMPILER}")
+        set(CMAKE_CXX_COMPILER "${CROSS_CXX_COMPILER}")
+
+        # 控制 find_root_path 行为，以 sysroot 为根查找库与头
+        set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+        set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+        set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+        set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+    endif()
+
+    add_compile_options($<$<CONFIG:Release>:-fPIC> $<$<CONFIG:Debug>:-fPIC>)
+
+    message(STATUS "[Cross] CROSS_COMPILE=ON")
+    message(STATUS "[Cross] CMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}")
+    message(STATUS "[Cross] CMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}")
+    message(STATUS "[Cross] CMAKE_SYSTEM_PROCESSOR=${CMAKE_SYSTEM_PROCESSOR}")
+    message(STATUS "[Cross] CMAKE_SYSROOT=${CMAKE_SYSROOT}")
+    message(STATUS "[Cross] CMAKE_C_COMPILER=${CMAKE_C_COMPILER}")
+    message(STATUS "[Cross] CMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}")
+endif()
 
 # 递归查找核心库源文件（不含 PhysicalLayer）
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS

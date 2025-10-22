@@ -7,6 +7,7 @@
 
 #include "MB_DDF/DDS/RingBuffer.h"
 #include "MB_DDF/Debug/Logger.h"
+#include "MB_DDF/DDS/SemaphoreGuard.h"
 #include <cstring>
 #include <semaphore.h>
 #include <sys/time.h>
@@ -170,12 +171,13 @@ bool RingBuffer::read_latest(SubscriberState* subscriber, Message*& out_message)
 bool RingBuffer::set_publisher(uint64_t publisher_id, const std::string& publisher_name) {
     // 检查是否已存在
     if (header_->publisher_id != 0) {
-        LOG_ERROR << "set_publisher failed, publisher already registered";
         // 如果名字相同，允许更新id
         if (std::strcmp(header_->publisher_name, publisher_name.c_str()) == 0) {
             header_->publisher_id = publisher_id;
             LOG_INFO << "set_publisher " << publisher_id << " " << publisher_name << " (name unchanged)";
             return true;
+        } else {
+            LOG_ERROR << "set_publisher failed, publisher already registered";
         }
         return false;
     }
@@ -198,9 +200,10 @@ void RingBuffer::remove_publisher() {
 }
 
 SubscriberState* RingBuffer::register_subscriber(uint64_t subscriber_id, const std::string& subscriber_name) {
-    // 使用信号量保护订阅者注册
-    if (sem_wait(sem_) != 0) {
-        LOG_ERROR << "register_subscriber failed, sem_wait failed";
+    // 使用RAII守护对象保护订阅者注册
+    SemaphoreGuard guard(sem_);
+    if (!guard.acquired()) {
+        LOG_ERROR << "register_subscriber failed, semaphore acquire failed";
         return nullptr;
     }
     
@@ -219,7 +222,7 @@ SubscriberState* RingBuffer::register_subscriber(uint64_t subscriber_id, const s
     // 有可能名字重复，但是id不同
     for (uint32_t i = 0; i < count; ++i) {
         if (std::strcmp(registry_->subscribers[i].subscriber_name, subscriber_name.c_str()) == 0) {
-            LOG_ERROR << "register_subscriber failed, subscriber_name " << subscriber_name << " already registered";
+            LOG_DEBUG << "register_subscriber " << subscriber_id << " " << subscriber_name << " (name unchanged)";
             registry_->subscribers[i].subscriber_id = subscriber_id;
             return &registry_->subscribers[i];
         }
@@ -259,14 +262,14 @@ SubscriberState* RingBuffer::register_subscriber(uint64_t subscriber_id, const s
         LOG_DEBUG << "register_subscriber " << subscriber_id << " " << subscriber_name;
     }
     
-    sem_post(sem_);
     return success ? &registry_->subscribers[free_index] : nullptr;
 }
 
 void RingBuffer::unregister_subscriber(SubscriberState* subscriber) {
-    // 使用信号量保护订阅者注销
-    if (sem_wait(sem_) != 0) {
-        LOG_ERROR << "unregister_subscriber failed, sem_wait failed";
+    // 使用RAII守护对象保护订阅者注销
+    SemaphoreGuard guard(sem_);
+    if (!guard.acquired()) {
+        LOG_ERROR << "unregister_subscriber failed, semaphore acquire failed";
         return;
     }
     
@@ -283,7 +286,6 @@ void RingBuffer::unregister_subscriber(SubscriberState* subscriber) {
     }
     
     registry_->count.store(count - 1, std::memory_order_release);
-    sem_post(sem_);
 }
 
 bool RingBuffer::wait_for_message(SubscriberState* subscriber, uint32_t timeout_ms) {
