@@ -11,7 +11,7 @@ MB_DDF（Missile Borne Data Distribution Framework）是一个用于弹上高实
 - **多物理层支持**：支持CAN、UDP、串口等多种通信协议
 - **消息完整性**：内置校验和机制确保数据完整性
 - **时间戳支持**：纳秒级精度的消息时间戳
-- **线程安全**：采用无锁设计和互斥锁保护关键资源
+- **线程安全**：采用无锁设计与 RAII 信号量守卫保护关键资源
 - **单例模式**：DDSCore采用单例模式，便于全局管理
 
 ## 项目结构
@@ -26,6 +26,7 @@ MB_DDF/
 │   │   ├── Subscriber.h/cpp    # 订阅者实现
 │   │   ├── RingBuffer.h/cpp    # 无锁环形缓冲区
 │   │   ├── SharedMemory.h/cpp  # 共享内存管理
+│   │   ├── SemaphoreGuard.h    # RAII 信号量守卫
 │   │   └── TopicRegistry.h/cpp # Topic注册表管理
 │   ├── Debug/                  # 调试模块
 │   │   ├── Logger.h            # 日志系统
@@ -271,12 +272,32 @@ int main() {
 - 两种执行模式：在信号处理上下文执行或独立线程执行
 - 可配置实时调度策略与优先级，以及绑核选项
 
+## 并发与同步
+
+### RAII 信号量守卫（SemaphoreGuard）
+- **设计意图**：用 RAII 封装 `sem_wait/sem_post`，在作用域结束时自动释放，避免遗漏 `sem_post` 导致死锁。
+- **适用范围**：保护 SharedMemory 管理的共享资源访问，包括 `DDSCore` 的发布/订阅创建、`TopicRegistry` 初始化与注册，以及 `RingBuffer` 订阅者注册/注销。
+- **关键行为**：
+  - 构造时尝试 `sem_wait` 获取信号量；异常或失败会记录错误但不崩溃。
+  - 析构时执行 `sem_post` 释放；支持移动语义避免重复释放。
+- **示例**：
+```cpp
+#include "MB_DDF/DDS/SemaphoreGuard.h"
+
+void safe_register(MB_DDF::DDS::SharedMemoryManager* shm) {
+    auto sem = shm->get_semaphore();
+    MB_DDF::DDS::SemaphoreGuard guard(sem);
+    // 在此作用域内安全访问共享内存 / Topic 注册表
+}
+```
+- **注意**：`SharedMemoryManager` 内部的 `sem_timedwait` 用于创建/打开阶段的死锁规避，语义不同，未替换为 RAII。
+
 ## 核心组件说明
 
 ### DDSCore
 - **功能**：DDS系统的主控制类，采用单例模式
 - **职责**：管理共享内存、Topic注册、发布者/订阅者创建
-- **版本**：当前版本 0.4.2
+- **版本**：当前版本 0.4.3
 
 ### 消息系统
 - **MessageHeader**：包含魔数、Topic ID、序列号、时间戳、数据大小和校验和
@@ -367,4 +388,4 @@ make debug  # 自动启动GDB调试第一个测试程序
 
 ---
 
-*最后更新：2025年10月19日*
+*最后更新：2025年10月22日*
