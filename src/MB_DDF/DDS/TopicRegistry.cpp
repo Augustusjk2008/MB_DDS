@@ -80,6 +80,7 @@ TopicMetadata* TopicRegistry::register_topic(const std::string& name, size_t rb_
             LOG_ERROR << "TopicRegistry error waiting for semaphore: " << strerror(errno);
             return nullptr;
         }
+        LOG_DEBUG << "TopicRegistry semaphore acquired";
         
         // 首先检查是否已经存在
         TopicMetadata* existing = get_topic_metadata(name);
@@ -90,6 +91,7 @@ TopicMetadata* TopicRegistry::register_topic(const std::string& name, size_t rb_
         
         // 原子地读取当前计数并检查是否还有空间
         uint32_t current_count = header_->topic_count.load(std::memory_order_acquire);
+        LOG_DEBUG << "Current topic count: " << current_count;
         if (current_count >= MAX_TOPICS) {
             LOG_ERROR << "Maximum number of topics reached: " << MAX_TOPICS;
             return nullptr;
@@ -100,6 +102,7 @@ TopicMetadata* TopicRegistry::register_topic(const std::string& name, size_t rb_
         for (size_t i = 0; i < MAX_TOPICS; ++i) {
             if (metadata_array_[i].topic_id == 0) {
                 metadata = &metadata_array_[i];
+                LOG_DEBUG << "Found empty slot at index: " << i;
                 break;
             }
         }
@@ -115,6 +118,7 @@ TopicMetadata* TopicRegistry::register_topic(const std::string& name, size_t rb_
             return nullptr;
         }
         size_t aligned_rb_size = ((rb_size + ALIGNMENT - 1) / ALIGNMENT) * ALIGNMENT;
+        LOG_DEBUG << "Aligned ring buffer size: " << aligned_rb_size;
         
         // 计算RingBuffer在共享内存中的偏移量，考虑内存对齐
         size_t rb_offset = DATA_OFFSET;
@@ -135,6 +139,7 @@ TopicMetadata* TopicRegistry::register_topic(const std::string& name, size_t rb_
                 rb_offset += existing_aligned_size;
             }
         }
+        LOG_DEBUG << "Calculated ring buffer offset for new topic: " << rb_offset;
         
         // 检查是否超出共享内存边界
         if (rb_offset + aligned_rb_size > shm_size_) {
@@ -151,6 +156,7 @@ TopicMetadata* TopicRegistry::register_topic(const std::string& name, size_t rb_
         metadata->ring_buffer_size = rb_size; // 保存原始大小
         
         // 原子地更新Topic计数
+        LOG_DEBUG << "Updating topic count to: " << (current_count + 1);
         header_->topic_count.fetch_add(1, std::memory_order_acq_rel);
         
         LOG_INFO << "Registered topic: " << name << " with ID: " << metadata->topic_id 

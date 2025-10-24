@@ -63,10 +63,12 @@ int main(int argc, char* argv[]) {
     // 配置发送端
     MB_DDF::PhysicalLayer::LinkConfig sender_config;
     sender_config.local_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.1.28", 9001); 
+    // sender_config.local_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.56.132", 9001); 
     sender_config.mtu = 32768;
     
     // 目标地址
     auto dest_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.1.100", 9002);
+    // auto dest_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.56.1", 9002);
     
     
     if (!sender.initialize(sender_config) || !sender.open()) {

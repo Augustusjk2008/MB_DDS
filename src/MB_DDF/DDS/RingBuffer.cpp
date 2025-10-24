@@ -15,7 +15,7 @@
 namespace MB_DDF {
 namespace DDS {
 
-RingBuffer::RingBuffer(void* buffer, size_t size, sem_t* sem) : sem_(sem) {
+RingBuffer::RingBuffer(void* buffer, size_t size, sem_t* sem, bool enable_checksum) : sem_(sem), enable_checksum_(enable_checksum) {
     // 计算各部分在共享内存中的布局
     char* base = static_cast<char*>(buffer);
     LOG_DEBUG << "RingBuffer buffer address: " << (void*)base;
@@ -73,7 +73,7 @@ bool RingBuffer::publish_message(const void* data, size_t size) {
     }
 
     // 更新消息时戳和校验和
-    buffer_msg->update();
+    buffer_msg->update(enable_checksum_);
 
     // 对齐到 ALIGNMENT
     size_t new_write_pos = (to_write_pos + total_size) % capacity_;
@@ -392,7 +392,7 @@ bool RingBuffer::validate_message(const Message* message) const {
     }
     
     // 验证Message
-    if (!message->is_valid()) {
+    if (!message->is_valid(enable_checksum_)) {
         return false;
     }
     
@@ -446,6 +446,112 @@ size_t RingBuffer::calculate_message_total_size(size_t data_size) {
     size_t total = Message::total_size(data_size);
     // 对齐到ALIGNMENT边界
     return (total + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
+}
+
+bool RingBuffer::is_checksum_enabled() const {
+    return enable_checksum_;
+}
+
+// 写槽预留（零拷贝支持）
+RingBuffer::ReserveToken RingBuffer::reserve(size_t max_size, size_t alignment) {
+    ReserveToken token;
+    if (max_size + sizeof(MessageHeader) > capacity_) {
+        LOG_ERROR << "reserve failed, requested size too large";
+        return token; // invalid
+    }
+
+    size_t to_write_pos = header_->write_pos.load(std::memory_order_acquire) % capacity_;
+    // 确保对齐
+    size_t aligned_pos = (to_write_pos + alignment - 1) & ~(alignment - 1);
+    if (aligned_pos >= capacity_) {
+        aligned_pos = 0; // 回绕
+    }
+
+    // 计算末尾剩余的连续空间（不含消息头）
+    size_t tail_space = (aligned_pos <= capacity_) ? (capacity_ - aligned_pos) : 0;
+    size_t payload_capacity_tail = (tail_space > sizeof(MessageHeader)) ? (tail_space - sizeof(MessageHeader)) : 0;
+
+    size_t pos = aligned_pos;
+    size_t payload_capacity = payload_capacity_tail;
+
+    // 如果末尾空间不足以容纳请求大小，选择从头开始的连续区域
+    if (payload_capacity < max_size) {
+        pos = 0;
+        // 头部对齐处理
+        pos = (pos + alignment - 1) & ~(alignment - 1);
+        payload_capacity = (capacity_ > pos + sizeof(MessageHeader)) ? (capacity_ - pos - sizeof(MessageHeader)) : 0;
+        if (payload_capacity < max_size) {
+            // 仍不足以容纳请求大小
+            LOG_ERROR << "reserve failed, contiguous region too small";
+            return token; // invalid
+        }
+    }
+
+    Message* msg = reinterpret_cast<Message*>(data_ + pos);
+    // 在填充期间设置为不可见
+    msg->header.magic = 0;
+    msg->header.data_size = 0;
+
+    token.pos = pos;
+    token.capacity = payload_capacity;
+    token.msg = msg;
+    token.valid = true;
+    return token;
+}
+
+// 提交写槽（更新头并通知订阅者）
+bool RingBuffer::commit(const ReserveToken& token, size_t used, uint32_t topic_id) {
+    if (!token.valid || token.msg == nullptr) {
+        LOG_ERROR << "commit failed, invalid token";
+        return false;
+    }
+    if (used > token.capacity) {
+        LOG_ERROR << "commit failed, used > capacity";
+        return false;
+    }
+
+    Message* buffer_msg = token.msg;
+
+    // 先保证载荷写入对其他线程可见
+    std::atomic_thread_fence(std::memory_order_release);
+
+    // 填充消息头
+    uint64_t seq = header_->current_sequence.fetch_add(1, std::memory_order_acq_rel) + 1;
+    buffer_msg->header.magic = MessageHeader::MAGIC_NUMBER;
+    buffer_msg->header.topic_id = topic_id;
+    buffer_msg->header.sequence = seq;
+    buffer_msg->header.data_size = static_cast<uint32_t>(used);
+    buffer_msg->update(enable_checksum_);
+
+    // 计算新写入位置（包含对齐）
+    size_t total_size = calculate_message_total_size(used);
+    size_t new_write_pos = (token.pos + total_size) % capacity_;
+    new_write_pos = (new_write_pos + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
+    if (new_write_pos >= capacity_) {
+        new_write_pos = 0;
+    }
+
+    // 更新环形缓冲区头部
+    header_->current_sequence.store(seq, std::memory_order_release);
+    header_->write_pos.store(new_write_pos, std::memory_order_release);
+    header_->timestamp.store(buffer_msg->header.timestamp, std::memory_order_release);
+
+    // 确保消息完全可见后再通知
+    std::atomic_thread_fence(std::memory_order_release);
+    notify_subscribers();
+
+    LOG_DEBUG << "commit message seq " << seq << " size " << used;
+    return true;
+}
+
+// 新增：放弃写槽（不推进写指针）
+void RingBuffer::abort(const ReserveToken& token) {
+    if (!token.valid || token.msg == nullptr) {
+        return;
+    }
+    // 保持该区域不可见，供后续写操作覆盖
+    token.msg->header.magic = 0;
+    token.msg->header.data_size = 0;
 }
 
 } // namespace DDS

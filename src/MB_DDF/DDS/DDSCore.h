@@ -49,37 +49,41 @@ public:
     static DDSCore& instance();
 
     // 版本号，用于共享内存布局升级
-    static const uint32_t VERSION = 0x00004003;
+    static const uint32_t VERSION = 0x00004004;
     
     /**
      * @brief 创建指定Topic的发布者
      * @param topic_name Topic名称
+     * @param enable_checksum 是否启用校验和，默认true
      * @return 发布者智能指针，失败时返回nullptr
      */
-    std::shared_ptr<Publisher> create_publisher(const std::string& topic_name);
+    std::shared_ptr<Publisher> create_publisher(const std::string& topic_name, bool enable_checksum = true);
 
     /**
      * @brief 创建指定Topic的发布者（别名）
      * @param topic_name Topic名称
+     * @param enable_checksum 是否启用校验和，默认true
      * @return 发布者智能指针，失败时返回nullptr
      */
-    std::shared_ptr<Publisher> create_writer(const std::string& topic_name);
+    std::shared_ptr<Publisher> create_writer(const std::string& topic_name, bool enable_checksum = true);
     
     /**
      * @brief 创建指定Topic的订阅者
      * @param topic_name Topic名称
+     * @param enable_checksum 是否启用校验和，默认true
      * @param callback 消息接收回调函数，默认空函数
      * @return 订阅者智能指针，失败时返回nullptr
      */
-    std::shared_ptr<Subscriber> create_subscriber(const std::string& topic_name, const MessageCallback& callback = nullptr);
+    std::shared_ptr<Subscriber> create_subscriber(const std::string& topic_name, bool enable_checksum = true, const MessageCallback& callback = nullptr);
 
     /**
      * @brief 创建指定Topic的订阅者（别名）
      * @param topic_name Topic名称
+     * @param enable_checksum 是否启用校验和，默认true
      * @param callback 消息接收回调函数，默认空函数
      * @return 订阅者智能指针，失败时返回nullptr
      */
-    std::shared_ptr<Subscriber> create_reader(const std::string& topic_name, const MessageCallback& callback = nullptr);
+    std::shared_ptr<Subscriber> create_reader(const std::string& topic_name, bool enable_checksum = true, const MessageCallback& callback = nullptr);
 
     /**
      * @brief 发布数据到指定Topic
@@ -129,9 +133,10 @@ private:
     /**
      * @brief 获取或创建指定Topic的环形缓冲区
      * @param topic_name Topic名称
+     * @param enable_checksum 是否启用校验和
      * @return 环形缓冲区指针，失败时返回nullptr
      */
-    RingBuffer* create_or_get_topic_buffer(const std::string& topic_name);
+    RingBuffer* create_or_get_topic_buffer(const std::string& topic_name, bool enable_checksum);
     
     /**
      * @brief 通过Topic名称查找topic_buffers_中存在的TopicMetadata

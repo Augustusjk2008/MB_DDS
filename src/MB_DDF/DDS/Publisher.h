@@ -14,6 +14,7 @@
 #include "MB_DDF/DDS/TopicRegistry.h"
 #include <string>
 #include <cstdint>
+#include <functional>
 
 namespace MB_DDF {
 namespace DDS {
@@ -39,6 +40,40 @@ public:
      * @brief 析构函数，清理资源
      */
     ~Publisher();
+
+    /**
+     * @brief 零拷贝写槽句柄（RAII）。在析构未提交时自动取消。
+     */
+    class WritableMessage {
+    public:
+        WritableMessage(RingBuffer* rb, TopicMetadata* metadata, const RingBuffer::ReserveToken& token);
+        ~WritableMessage();
+        void* data();
+        size_t capacity() const;
+        bool commit(size_t used);
+        void cancel();
+        bool valid() const;
+    private:
+        RingBuffer* rb_;
+        TopicMetadata* metadata_;
+        RingBuffer::ReserveToken token_;
+        bool committed_;
+    };
+
+    /**
+     * @brief 开始一条零拷贝消息，返回可写句柄
+     * @param max_size 载荷最大预留大小
+     * @return 写槽句柄（invalid时表示预留失败）
+     */
+    WritableMessage begin_message(size_t max_size);
+
+    /**
+     * @brief 使用回调填充并发布零拷贝消息
+     * @param max_size 载荷最大预留大小
+     * @param fill 用户回调，签名为 size_t(void* buffer, size_t capacity)，返回写入字节数，返回0表示取消
+     * @return 发布成功返回true
+     */
+    bool publish_fill(size_t max_size, const std::function<size_t(void* buffer, size_t capacity)>& fill);
 
     /**
      * @brief 发布数据到Topic

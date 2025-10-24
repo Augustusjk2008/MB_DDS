@@ -10,7 +10,6 @@
 
 #include "MB_DDF/DDS/DDSCore.h"
 #include "MB_DDF/Debug/Logger.h"
-#include "MB_DDF/DDS/SemaphoreGuard.h"
 
 #include <iostream>
 #include <fstream>
@@ -27,18 +26,10 @@ DDSCore& DDSCore::instance() {
     return instance;
 }
 
-std::shared_ptr<Publisher> DDSCore::create_publisher(const std::string& topic_name) {     
+std::shared_ptr<Publisher> DDSCore::create_publisher(const std::string& topic_name, bool enable_checksum) {     
     // 使用RAII守护对象保护共享内存访问
     RingBuffer* buffer = nullptr;
-    {
-        SemaphoreGuard guard(shm_manager_->get_semaphore());
-        if (!guard.acquired()) {
-            LOG_ERROR << "create_or_get_topic_buffer failed, semaphore acquire failed";
-            return nullptr;
-        }
-        // 创建或获取环形缓冲区
-        buffer = create_or_get_topic_buffer(topic_name);
-    }
+    buffer = create_or_get_topic_buffer(topic_name, enable_checksum);
     if (buffer == nullptr) {
         LOG_ERROR << "failed to create or get topic buffer, topic name: " << topic_name;
         return nullptr; // 未找到匹配的环形缓冲区
@@ -60,22 +51,14 @@ std::shared_ptr<Publisher> DDSCore::create_publisher(const std::string& topic_na
     return publisher;
 }
 
-std::shared_ptr<Publisher> DDSCore::create_writer(const std::string& topic_name) {   
-    return create_publisher(topic_name);
+std::shared_ptr<Publisher> DDSCore::create_writer(const std::string& topic_name, bool enable_checksum) {   
+    return create_publisher(topic_name, enable_checksum);
 } 
 
-std::shared_ptr<Subscriber> DDSCore::create_subscriber(const std::string& topic_name, const MessageCallback& callback) {
+std::shared_ptr<Subscriber> DDSCore::create_subscriber(const std::string& topic_name, bool enable_checksum, const MessageCallback& callback) {
     // 使用RAII守护对象保护共享内存访问
     RingBuffer* buffer = nullptr;
-    {
-        SemaphoreGuard guard(shm_manager_->get_semaphore());
-        if (!guard.acquired()) {
-            LOG_ERROR << "create_or_get_topic_buffer failed, semaphore acquire failed";
-            return nullptr;
-        }
-        // 创建或获取环形缓冲区
-        buffer = create_or_get_topic_buffer(topic_name);
-    }
+    buffer = create_or_get_topic_buffer(topic_name, enable_checksum);
     if (buffer == nullptr) {
         LOG_ERROR << "failed to create or get topic buffer, topic name: " << topic_name;
         return nullptr; // 未找到匹配的环形缓冲区
@@ -94,8 +77,8 @@ std::shared_ptr<Subscriber> DDSCore::create_subscriber(const std::string& topic_
     return subscriber;
 }
 
-std::shared_ptr<Subscriber> DDSCore::create_reader(const std::string& topic_name, const MessageCallback& callback) {
-    return create_subscriber(topic_name, callback);
+std::shared_ptr<Subscriber> DDSCore::create_reader(const std::string& topic_name, bool enable_checksum, const MessageCallback& callback) {
+    return create_subscriber(topic_name, enable_checksum, callback);
 }
 
 size_t DDSCore::data_write(std::shared_ptr<Publisher> publisher, const void* data, size_t size) {
@@ -172,7 +155,7 @@ bool DDSCore::initialize(size_t shared_memory_size) {
     }
 }
 
-RingBuffer* DDSCore::create_or_get_topic_buffer(const std::string& topic_name) {
+RingBuffer* DDSCore::create_or_get_topic_buffer(const std::string& topic_name, bool enable_checksum) {
     // 检查系统是否已初始化
     if (!initialized_) {
         initialize();
@@ -190,6 +173,7 @@ RingBuffer* DDSCore::create_or_get_topic_buffer(const std::string& topic_name) {
     if (metadata != nullptr) {
         // Topic已存在，检查是否已经在topic_buffers_中
         auto it = topic_buffers_.find(metadata);
+        LOG_DEBUG << "Searching for RingBuffer for topic: " << topic_name;
         if (it != topic_buffers_.end()) {
             // RingBuffer已存在，直接返回
             LOG_DEBUG << "Retrieved existing RingBuffer for topic: " << topic_name;
@@ -204,7 +188,8 @@ RingBuffer* DDSCore::create_or_get_topic_buffer(const std::string& topic_name) {
                 auto ring_buffer = std::make_unique<RingBuffer>(
                     buffer_addr, 
                     metadata->ring_buffer_size, 
-                    shm_manager_->get_semaphore()
+                    shm_manager_->get_semaphore(),
+                    enable_checksum
                 );
                 
                 // 将RingBuffer添加到映射中
@@ -221,11 +206,14 @@ RingBuffer* DDSCore::create_or_get_topic_buffer(const std::string& topic_name) {
         }
     } else {
         // Topic不存在，需要创建新的Topic
+        LOG_DEBUG << "Topic '" << topic_name << "' does not exist, creating new topic";
         try {
             // 默认环形缓冲区大小为1MB
             const size_t ring_buffer_size = 1024 * 1024;
             
             // 在TopicRegistry中注册新的Topic
+            LOG_DEBUG << "Registering new topic: " << topic_name 
+                     << " with ring buffer size: " << ring_buffer_size;
             metadata = topic_registry_->register_topic(topic_name, ring_buffer_size);
             if (!metadata) {
                 LOG_ERROR << "Failed to register new topic: " << topic_name;
@@ -239,8 +227,11 @@ RingBuffer* DDSCore::create_or_get_topic_buffer(const std::string& topic_name) {
             auto ring_buffer = std::make_unique<RingBuffer>(
                 buffer_addr, 
                 metadata->ring_buffer_size, 
-                shm_manager_->get_semaphore()
+                shm_manager_->get_semaphore(),
+                enable_checksum
             );
+            LOG_DEBUG << "Created RingBuffer for new topic: " << topic_name 
+                     << " with size: " << metadata->ring_buffer_size;
             
             // 将RingBuffer添加到映射中
             RingBuffer* buffer_ptr = ring_buffer.get();

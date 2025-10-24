@@ -297,7 +297,7 @@ void safe_register(MB_DDF::DDS::SharedMemoryManager* shm) {
 ### DDSCore
 - **功能**：DDS系统的主控制类，采用单例模式
 - **职责**：管理共享内存、Topic注册、发布者/订阅者创建
-- **版本**：当前版本 0.4.3
+- **版本**：当前版本 0.4.4
 
 ### 消息系统
 - **MessageHeader**：包含魔数、Topic ID、序列号、时间戳、数据大小和校验和

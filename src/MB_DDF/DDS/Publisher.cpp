@@ -6,6 +6,7 @@
  */
 
 #include "MB_DDF/DDS/Publisher.h"
+#include "MB_DDF/Debug/Logger.h"
 #include <random>
 
 namespace MB_DDF {
@@ -28,6 +29,80 @@ Publisher::Publisher(TopicMetadata* metadata, RingBuffer* ring_buffer, const std
 Publisher::~Publisher() {
     // 清理资源，当前实现中没有需要特别清理的资源
     // ring_buffer_由外部管理，不需要在这里释放
+}
+
+// WritableMessage 实现
+Publisher::WritableMessage::WritableMessage(RingBuffer* rb, TopicMetadata* metadata, const RingBuffer::ReserveToken& token)
+    : rb_(rb), metadata_(metadata), token_(token), committed_(false) {}
+
+Publisher::WritableMessage::~WritableMessage() {
+    if (!committed_ && token_.valid && rb_) {
+        rb_->abort(token_);
+    }
+}
+
+void* Publisher::WritableMessage::data() {
+    return token_.valid && token_.msg ? token_.msg->get_data() : nullptr;
+}
+
+size_t Publisher::WritableMessage::capacity() const {
+    return token_.capacity;
+}
+
+bool Publisher::WritableMessage::commit(size_t used) {
+    if (!token_.valid || committed_ || rb_ == nullptr || metadata_ == nullptr) {
+        return false;
+    }
+    bool ok = rb_->commit(token_, used, metadata_->topic_id);
+    committed_ = ok;
+    return ok;
+}
+
+void Publisher::WritableMessage::cancel() {
+    if (token_.valid && rb_ && !committed_) {
+        rb_->abort(token_);
+        committed_ = false;
+    }
+}
+
+bool Publisher::WritableMessage::valid() const {
+    return token_.valid && token_.msg != nullptr;
+}
+
+Publisher::WritableMessage Publisher::begin_message(size_t max_size) {
+    if (ring_buffer_ == nullptr) {
+        return WritableMessage(nullptr, nullptr, RingBuffer::ReserveToken());
+    }
+    auto token = ring_buffer_->reserve(max_size);
+    return WritableMessage(ring_buffer_, metadata_, token);
+}
+
+bool Publisher::publish_fill(size_t max_size, const std::function<size_t(void* buffer, size_t capacity)>& fill) {
+    if (ring_buffer_ == nullptr || metadata_ == nullptr || !fill) {
+        LOG_ERROR << "Publisher " << publisher_name_ << " publish_fill invalid parameters";
+        return false;
+    }
+    auto token = ring_buffer_->reserve(max_size);
+    if (!token.valid || token.msg == nullptr) {
+        LOG_ERROR << "Publisher " << publisher_name_ << " publish_fill reserve token invalid";
+        return false;
+    }
+    void* buf = token.msg->get_data();
+    size_t cap = token.capacity;
+    size_t written = 0;
+    try {
+        written = fill(buf, cap);
+    } catch (...) {
+        LOG_ERROR << "Publisher " << publisher_name_ << " publish_fill exception";
+        ring_buffer_->abort(token);
+        return false;
+    }
+    if (written == 0 || written > cap) {
+        ring_buffer_->abort(token);
+        LOG_ERROR << "Publisher " << publisher_name_ << " publish_fill invalid written size: " << written;
+        return false;
+    }
+    return ring_buffer_->commit(token, written, metadata_->topic_id);
 }
 
 bool Publisher::publish(const void* data, size_t size) {

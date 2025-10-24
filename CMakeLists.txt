@@ -146,7 +146,7 @@ if(BUILD_TESTS)
 
         if(BUILD_LIBS)
             # 如果构建了库，则链接库
-            if(TEST_NAME STREQUAL "TestMonitor")
+            if(TEST_NAME STREQUAL "TestMonitor" OR TEST_NAME STREQUAL "TestPublishPerf")
                 target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_TIMER MB_DDF_PHYSICAL)
             else()
                 target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_TIMER)

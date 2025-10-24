@@ -19,6 +19,9 @@ public:
             LOG_ERROR << "SemaphoreGuard construct failed: sem is nullptr";
             return;
         }
+        int sem_value = -1;
+        if (sem_ && sem_getvalue(sem_, &sem_value) != 0) { sem_value = -1; }
+        LOG_DEBUG << sem_value << " SemaphoreGuard waiting on " << sem_;
         if (sem_wait(sem_) == 0) {
             acquired_ = true;
         } else {
@@ -28,6 +31,9 @@ public:
 
     ~SemaphoreGuard() {
         if (acquired_) {
+            int sem_value = -1;
+            if (sem_ && sem_getvalue(sem_, &sem_value) != 0) { sem_value = -1; }
+            LOG_DEBUG << sem_value << " SemaphoreGuard posting on " << sem_;
             if (sem_post(sem_) != 0) {
                 LOG_ERROR << "sem_post failed: " << strerror(errno);
             }
@@ -45,6 +51,9 @@ public:
         if (this != &other) {
             // 先释放当前持有的资源
             if (acquired_ && sem_) {
+                int sem_value = -1;
+                if (sem_ && sem_getvalue(sem_, &sem_value) != 0) { sem_value = -1; }
+                LOG_DEBUG << sem_value << " SemaphoreGuard posting on " << sem_;
                 if (sem_post(sem_) != 0) {
                     LOG_ERROR << "sem_post failed during move assign: " << strerror(errno);
                 }
@@ -62,6 +71,9 @@ public:
     // 提前释放（可选），通常不需要手动调用
     void release() noexcept {
         if (acquired_) {
+            int sem_value = -1;
+            if (sem_ && sem_getvalue(sem_, &sem_value) != 0) { sem_value = -1; }
+            LOG_DEBUG << sem_value << " SemaphoreGuard posting on " << sem_;
             if (sem_post(sem_) != 0) {
                 LOG_ERROR << "sem_post failed in release: " << strerror(errno);
             }

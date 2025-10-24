@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <bits/atomic_wait.h>
 #include <cstdint>
 #include <chrono>
 
@@ -200,11 +201,11 @@ struct alignas(8) Message {
      * @brief 验证消息的完整性
      * @return 消息有效且校验和正确返回true，否则返回false
      */
-    bool is_valid() const {
+    bool is_valid(bool enable_checksum) const {
         if (!header.is_valid()) {
             return false;
         }
-        if (header.data_size > 0) {
+        if (header.data_size > 0 && enable_checksum) {
             return header.verify_checksum(get_data(), header.data_size);
         }
         return true; // 空数据消息也是有效的
@@ -213,9 +214,13 @@ struct alignas(8) Message {
     /**
      * @brief 更新消息的时间戳和校验和
      */
-    void update() {
+    void update(bool enable_checksum) {
         header.set_timestamp();
-        header.set_checksum(get_data(), header.data_size);
+        if (header.data_size > 0 && enable_checksum) {
+            header.set_checksum(get_data(), header.data_size);
+        } else {
+            header.checksum = 0;
+        }
     }
 };
 

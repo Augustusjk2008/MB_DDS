@@ -82,9 +82,23 @@ public:
      * @param buffer 缓冲区内存地址（由TopicRegistry分配）
      * @param size 缓冲区总大小
      * @param sem 共享内存信号量（用于发布者和订阅者注册保护）
+     * @param enable_checksum 是否启用校验和验证（默认true）
      */
-    RingBuffer(void* buffer, size_t size, sem_t* sem);
+    RingBuffer(void* buffer, size_t size, sem_t* sem, bool enable_checksum = true);
     
+    // 写槽预留与提交（零拷贝发布支持）
+    struct ReserveToken {
+        size_t pos;           // 数据区内偏移（消息头起始）
+        size_t capacity;      // 可写载荷容量（不含消息头）
+        Message* msg;         // 指向消息头位置
+        bool valid;
+        ReserveToken() : pos(0), capacity(0), msg(nullptr), valid(false) {}
+    };
+
+    ReserveToken reserve(size_t max_size, size_t alignment = ALIGNMENT);
+    bool commit(const ReserveToken& token, size_t used, uint32_t topic_id);
+    void abort(const ReserveToken& token);
+
     /**
      * @brief 发布消息到环形缓冲区
      * @param data 要发布的消息数据指针
@@ -201,7 +215,17 @@ public:
         std::vector<std::pair<uint64_t, std::string>> subscribers;
     };
     
+    /**
+     * @brief 获取缓冲区统计信息
+     * @return 缓冲区统计信息结构体
+     */
     Statistics get_statistics() const;
+
+    /**
+     * @brief 检查缓冲区是否启用校验和验证
+     * @return 启用校验和验证返回true，否则返回false
+     */
+    bool is_checksum_enabled() const;
 
 private:    
     /**
@@ -216,11 +240,12 @@ private:
         SubscriberRegistry() : count(0) {}
     };
 
-    RingHeader* header_;                    ///< 缓冲区头部指针
+    RingHeader* header_;                ///< 缓冲区头部指针
     SubscriberRegistry* registry_;      ///< 订阅者注册表指针
     char* data_;                       ///< 数据存储区指针
     size_t capacity_;                  ///< 数据区容量
     sem_t* sem_;                       ///< 共享内存信号量    
+    bool enable_checksum_;             ///< 是否启用校验和验证
     
     /**
      * @brief 检查是否可以写入指定大小的消息

@@ -17,8 +17,8 @@ int main() {
     dds.initialize(128 * 1024 * 1024);
 
     // 创建发布者和订阅者
-    auto publisher = dds.create_publisher("local://test_topic_c");
-    auto subscriber = dds.create_subscriber("local://test_topic_a"
+    auto publisher = dds.create_publisher("local://test_topic_c", false);
+    auto subscriber = dds.create_subscriber("local://test_topic_a", false
         , [](const void* data, size_t size, uint64_t timestamp) {
             // 计算延迟
             uint64_t current_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();

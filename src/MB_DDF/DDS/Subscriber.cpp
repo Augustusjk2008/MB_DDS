@@ -107,7 +107,7 @@ void Subscriber::worker_loop() {
             // 解析消息
             if (received_size >= sizeof(MessageHeader)) {   
                 // 验证消息头是否有效
-                if (msg->is_valid()) {    
+                if (msg->is_valid(ring_buffer_->is_checksum_enabled())) {    
                     // 调用回调函数
                     if (callback_) { 
                         LOG_DEBUG << "msg->get_data(): " << msg->get_data(); 

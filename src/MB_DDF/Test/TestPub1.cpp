@@ -17,7 +17,7 @@ int main() {
     dds.initialize(128 * 1024 * 1024);
 
     // 创建发布者和订阅者
-    auto publisher = dds.create_publisher("local://test_topic_a");
+    auto publisher = dds.create_publisher("local://test_topic_a", false);
 
     // 主循环，持续发布数据
     while (true) {
