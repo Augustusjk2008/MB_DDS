@@ -2,17 +2,16 @@
 
 ## 项目简介
 
-MB_DDF（Missile Borne Data Distribution Framework）是一个用于弹上高实时性场景的、基于共享内存和无锁环形缓冲区实现的高性能数据分发系统。该项目采用发布者-订阅者模式，支持多种物理层通信协议，为实时系统提供低延迟、高吞吐量的数据分发服务。
+MB_DDF（Missile Borne Data Distribution Framework）面向高实时性场景，采用共享内存与无锁环形缓冲区的发布-订阅模型，提供微秒级延迟的数据分发能力。物理层采用数据面/控制面分层设计，当前提供 `UdpLink` 与基于寄存器的 `Rs422Device`，并可按需扩展其他链路。
 
 ## 核心特性
 
-- **高性能通信**：基于共享内存和无锁环形缓冲区，实现微秒级延迟
-- **发布-订阅模式**：支持一对多、多对一的灵活消息传递
-- **多物理层支持**：支持CAN、UDP、串口等多种通信协议
-- **消息完整性**：内置校验和机制确保数据完整性
-- **时间戳支持**：纳秒级精度的消息时间戳
-- **线程安全**：采用无锁设计与 RAII 信号量守卫保护关键资源
-- **单例模式**：DDSCore采用单例模式，便于全局管理
+- 高性能发布/订阅：共享内存 + 无锁环形缓冲区，微秒级延迟
+- 统一接口分层：数据面 `ILink` 与控制面 `IDeviceTransport`
+- 现有链路：`UdpLink` 与 `Rs422Device`（寄存器收发）
+- 消息完整性：可选 CRC32 校验，纳秒级时间戳
+- 线程安全：无锁队列 + RAII 信号量守卫
+- 单例控制：`DDSCore` 管理生命周期与资源
 
 ## 项目结构
 
@@ -36,14 +35,14 @@ MB_DDF/
 │   │   └── SharedMemoryAccessor.h/cpp # 共享内存访问器
 │   ├── PhysicalLayer/          # 物理层模块（数据面/控制面分层）
 │   │   ├── DataPlane/          # 数据面：统一链路接口与实现
-│   │   │   ├── ILink.h         # 统一数据面接口（send/receive、ioctl、事件）
-│   │   │   └── UdpLink.h/cpp   # UDP 链路实现
+│   │   │   ├── ILink.h         # 统一数据面接口（send/receive、ioctl、事件fd）
+│   │   │   └── UdpLink.h/cpp   # UDP 链路实现（非阻塞 + poll）
 │   │   ├── Device/             # 设备型链路适配器
 │   │   │   ├── TransportLinkAdapter.h # ILink 适配基类（桥接控制面）
 │   │   │   └── Rs422Device.h/cpp      # RS422 设备适配器（寄存器收发、ioctl配置）
 │   │   ├── ControlPlane/       # 控制面：设备/总线访问抽象
-│   │   │   ├── IDeviceTransport.h     # 控制面接口（寄存器、DMA、事件）
-│   │   │   ├── XdmaTransport.h/cpp    # XDMA 控制面实现（用户寄存器映射、事件）
+│   │   │   ├── IDeviceTransport.h     # 控制面接口（寄存器、DMA、事件fd）
+│   │   │   ├── XdmaTransport.h/cpp    # XDMA 控制面实现（mmap寄存器、DMA、事件）
 │   │   │   └── NullTransport.h        # 空实现/Mock（用于测试）
 │   │   ├── Support/            # 物理层通用支持
 │   │   │   └── Log.h           # 轻量日志宏（数据面/设备适配器使用）
@@ -211,8 +210,8 @@ int main() {
     // 创建发布者
     auto publisher = dds.create_publisher("local://test_topic");
     
-    // 创建订阅者（带回调函数）
-    auto subscriber = dds.create_subscriber("local://test_topic", 
+    // 创建订阅者（回调模式）
+    auto subscriber = dds.create_subscriber("local://test_topic", true,
         [](const void* data, size_t size, uint64_t timestamp) {
             const char* msg = static_cast<const char*>(data);
             LOG_INFO << "Received: " << msg;
@@ -222,33 +221,61 @@ int main() {
     std::string message = "Hello, DDS!";
     publisher->write(message.c_str(), message.size());
     
-    // 读取数据
-    char buffer[1024];
-    size_t size = sizeof(buffer);
-    subscriber->read_latest(buffer, size);
+    // 回调模式订阅，无需手动读取
     
     return 0;
 }
 ```
 
+### 手动读取示例
+
+```cpp
+#include "MB_DDF/DDS/DDSCore.h"
+#include "MB_DDF/Debug/Logger.h"
+
+int main() {
+    LOG_SET_LEVEL_INFO();
+    auto& dds = MB_DDF::DDS::DDSCore::instance();
+    dds.initialize(128 * 1024 * 1024);
+
+    auto publisher = dds.create_publisher("local://test_topic");
+    // 手动读取：不传回调
+    auto subscriber = dds.create_subscriber("local://test_topic", true);
+
+    std::string message = "Hello, DDS!";
+    publisher->write(message.c_str(), message.size());
+
+    char buffer[1024];
+    size_t n = subscriber->read(buffer, sizeof(buffer), /*latest*/true);
+    LOG_INFO << "read bytes: " << n;
+
+    return 0;
+}
+```
+
+ - 别名：`create_writer` 是 `create_publisher` 的别名；`create_reader` 是 `create_subscriber` 的别名。
+ - 进阶：支持零拷贝发布 `publish_fill(max_size, fill_fn)`，或使用 `begin_message()` 获得 `WritableMessage` 进行 `commit/cancel`。
+
 ## 物理层设计概览
 
-- 分层架构：
-  - 数据面（DataPlane）：统一链路接口 `ILink`，提供 `send/receive`、事件 fd、阻塞接收（超时）及通用 `ioctl`。
+ - 分层架构：
+  - 数据面（DataPlane）：统一链路接口 `ILink`，提供 `send/receive`、事件fd、阻塞接收（超时）及通用 `ioctl`。
   - 控制面（ControlPlane）：设备/总线访问抽象 `IDeviceTransport`，提供寄存器读写、DMA（可选）、事件等待等。
   - 设备适配（Device）：`TransportLinkAdapter` 桥接控制面为数据面；`Rs422Device` 基于寄存器实现收发与配置。
 
 - 类型与配置：
   - `TransportConfig`：控制面配置（设备路径、DMA通道、事件编号、设备偏移）。
+  - `TransportConfig.device_path`：使用设备基路径（如 `/dev/xdma/rs422_0`），内部派生 `*_user`、`*_h2c_<ch>`、`*_c2h_<ch>`、`*_events_<num>`。
   - `LinkConfig`：链路配置（名称等，具体链路可自定义扩展）。
+  - `LinkConfig.name`（UDP）：支持两种格式：`"<local_port>"` 或 `"<local_ip>:<local_port>|<remote_ip>:<remote_port>"`。
   - `Endpoint`：数据面端点抽象（当前使用 `channel_id`，不同链路可对应端口/通道）。
 
 - UDP 链路：
-  - `UdpLink` 实现了 `ILink` 接口，使用非阻塞 socket；支持 `receive(buf, size, ep, timeout_us)` 基于 `poll` 的阻塞接收。
+  - `UdpLink` 实现了 `ILink` 接口，使用非阻塞 socket；支持 `receive(buf, size, ep, timeout_us)` 基于 `poll` 的阻塞接收；`ioctl` 不支持返回 `-ENOTSUP`。
 
 - RS422 设备链路：
   - `Rs422Device` 通过 `IDeviceTransport` 的寄存器映射访问设备；重载 `send/receive` 使用寄存器 BRAM 缓冲区与命令寄存器。
-  - `open()` 要求控制面已映射用户寄存器空间；`ioctl(IOCTL_CONFIG, Config)` 进行设备配置（UCR/MCR/BRSR/ICR/头字节等）。
+  - `open()` 要求控制面已映射用户寄存器空间；`ioctl(IOCTL_CONFIG, Config)` 进行设备配置（UCR/MCR/BRSR/ICR/头字节等）；`send` 单次最大长度 255 字节，内部按 4 字节对齐写入缓冲区并触发 `CMD_TX`。
 
 ### UDP 链路示例
 
@@ -261,18 +288,16 @@ using namespace MB_DDF::PhysicalLayer::DataPlane;
 int main() {
     LOG_SET_LEVEL_INFO();
     UdpLink link;
-    LinkConfig cfg; // 可设置 name 等属性
+    LinkConfig cfg; cfg.name = "127.0.0.1:6000|127.0.0.1:7000"; // 格式：<local_ip>:<local_port>|<remote_ip>:<remote_port>
     if (!link.open(cfg)) {
         LOG_ERROR << "UdpLink open failed";
         return -1;
     }
-
-    Endpoint ep{12345};
     const char msg[] = "hello";
-    link.send(reinterpret_cast<const uint8_t*>(msg), sizeof(msg), ep);
+    link.send(reinterpret_cast<const uint8_t*>(msg), sizeof(msg)); // 已配置默认远端，可省略 Endpoint
 
     uint8_t buf[256]; Endpoint src{};
-    int32_t n = link.receive(buf, sizeof(buf), src, 1000); // 1ms 超时
+    int32_t n = link.receive(buf, sizeof(buf), src, 1000); // 1ms 超时；0=超时，<0=错误
     LOG_INFO << "received: " << n;
     link.close();
 }
@@ -291,7 +316,7 @@ int main() {
     LOG_SET_LEVEL_INFO();
 
     ControlPlane::XdmaTransport tp;
-    TransportConfig tp_cfg; tp_cfg.device_path = "rs422_0"; // /dev/xdma/rs422_0_user
+    TransportConfig tp_cfg; tp_cfg.device_path = "/dev/xdma/rs422_0"; // 设备基路径；内部派生 *_user/_h2c_<ch>/_c2h_<ch>/_events_<num>
     if (!tp.open(tp_cfg)) { LOG_ERROR << "transport open failed"; return -1; }
 
     Device::Rs422Device dev(tp, /*mtu*/2048);
@@ -304,7 +329,7 @@ int main() {
     int ret = dev.ioctl(Device::Rs422Device::IOCTL_CONFIG, &c, sizeof(c), nullptr, 0);
     if (ret != 0) { LOG_ERROR << "ioctl config failed: " << ret; }
 
-    // 发送/接收（寄存器路径）
+    // 发送/接收（寄存器路径；单次 send 最多 255 字节）
     DataPlane::Endpoint ep{0};
     uint8_t out[10] = {1,2,3,4,5};
     dev.send(out, 5, ep);
@@ -376,7 +401,7 @@ void safe_register(MB_DDF::DDS::SharedMemoryManager* shm) {
 ### DDSCore
 - **功能**：DDS系统的主控制类，采用单例模式
 - **职责**：管理共享内存、Topic注册、发布者/订阅者创建
-- **版本**：当前版本 0.4.5
+- **版本**：0.4.5（0x00004005）
 
 ### 消息系统
 - **MessageHeader**：包含魔数、Topic ID、序列号、时间戳、数据大小和校验和
@@ -389,9 +414,9 @@ void safe_register(MB_DDF::DDS::SharedMemoryManager* shm) {
 - **TopicRegistry**：Topic注册表，管理Topic元数据
 
 ### 物理层
-- **支持协议**：CAN/CANFD、UDP、串口
-- **地址类型**：统一的地址抽象，支持多种物理介质
-- **链路配置**：支持波特率、MTU、超时等参数配置
+- **数据面**：`ILink`（send/receive/ioctl、事件fd、MTU）
+- **控制面**：`IDeviceTransport`（mmap 寄存器、DMA、事件fd）
+- **设备适配**：`TransportLinkAdapter` 与 `Rs422Device`；`UdpLink` 提供基于 socket 的实现
 
 ### 定时器
 - **SystemTimer**：高精度周期定时器，支持`s/ms/us/ns`周期字符串
@@ -420,8 +445,14 @@ LOG_DISABLE_FUNCTION_LINE(); // 禁用函数名和行号
 
 ### GDB调试
 ```bash
-# Debug版本支持GDB调试
-make debug  # 自动启动GDB调试第一个测试程序
+# 以 Debug 构建并在 GDB 下运行
+./build.sh              # 默认 Debug 构建
+gdb --args ./build/TestPubSub1  # 指定要调试的可执行文件
+# 在 GDB 中常用命令：
+# (gdb) run
+# (gdb) bt                # 查看堆栈
+# (gdb) break Function    # 设置断点
+# (gdb) break file.cpp:42 # 按文件行号断点
 ```
 
 ## 性能特性

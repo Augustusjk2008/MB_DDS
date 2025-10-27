@@ -24,10 +24,10 @@ static constexpr uint64_t THH_reg  = 0x205; // 发送头高字节（8位）
 static constexpr uint64_t RHL_reg  = 0x206; // 接收头低字节（8位）
 static constexpr uint64_t RHH_reg  = 0x207; // 接收头高字节（8位）
 
-static constexpr uint64_t TTL_reg  = 0x208; // 发送尾低字节（8位，可选）
-static constexpr uint64_t TTH_reg  = 0x209; // 发送尾高字节（8位，可选）
-static constexpr uint64_t RTL_reg  = 0x20A; // 接收尾低字节（8位，可选）
-static constexpr uint64_t RTH_reg  = 0x20B; // 接收尾高字节（8位，可选）
+// static constexpr uint64_t TTL_reg  = 0x208; // 发送尾低字节（8位，可选）
+// static constexpr uint64_t TTH_reg  = 0x209; // 发送尾高字节（8位，可选）
+// static constexpr uint64_t RTL_reg  = 0x20A; // 接收尾低字节（8位，可选）
+// static constexpr uint64_t RTH_reg  = 0x20B; // 接收尾高字节（8位，可选）
 
 static constexpr uint64_t CMD_reg  = 0x300; // 命令/状态寄存器（写入命令用 32 位，读取状态用 8 位）
 static constexpr uint64_t STU_reg  = 0x300; // 状态寄存器（与 CMD 同址，读 8 位）
