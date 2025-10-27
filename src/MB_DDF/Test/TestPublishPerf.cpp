@@ -1,10 +1,9 @@
 #include "MB_DDF/DDS/DDSCore.h"
 #include "MB_DDF/DDS/Subscriber.h"
 #include "MB_DDF/Debug/Logger.h"
-#include "MB_DDF/Timer/ChronoHelper.h"
 #include "MB_DDF/Timer/SystemTimer.h"
-#include "MB_DDF/PhysicalLayer/UdpLink.h"
-#include "MB_DDF/PhysicalLayer/BasicTypes.h"
+#include "MB_DDF/PhysicalLayer/DataPlane/UdpLink.h"
+// removed old BasicTypes include; UdpLink now uses LinkConfig.name
 
 #include <chrono>
 #include <thread>
@@ -19,7 +18,7 @@ int main() {
     LOG_DISABLE_TIMESTAMP();
     LOG_DISABLE_FUNCTION_LINE();
 
-    // 1) 初始化DDS
+    // 初始化DDS
     auto& dds = MB_DDF::DDS::DDSCore::instance();
     dds.initialize(128 * 1024 * 1024);
 
@@ -29,6 +28,8 @@ int main() {
     auto publisher = dds.create_publisher(topic_name, false);
     auto subscriber = dds.create_subscriber(topic_name, false
         , [&start_time](const void* data, size_t size, uint64_t timestamp) {
+            (void)timestamp;
+            (void)size;
             // 计算延迟
             uint64_t current_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 
@@ -48,40 +49,40 @@ int main() {
     // 等待工作线程启动
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    // 2) 新建UDP物理端口，自发自收
-    MB_DDF::PhysicalLayer::UdpLink sender;
-    
-    // 配置发送端
+    // 新建UDP物理端口，自发自收（同端口回环）
+    MB_DDF::PhysicalLayer::DataPlane::UdpLink sender;
     MB_DDF::PhysicalLayer::LinkConfig sender_config;
-    sender_config.local_addr = MB_DDF::PhysicalLayer::Address::createUDP("127.0.0.1", 9876); 
-    sender_config.mtu = 65535;
-    
-    // 目标地址
-    auto dest_addr = MB_DDF::PhysicalLayer::Address::createUDP("127.0.0.1", 9876);
+    sender_config.mtu = 60000;
+    sender_config.name = "127.0.0.1:9876|127.0.0.1:9876"; // 绑定并连接到自身端口
 
-    // UDP发送配置
-    sender_config.remote_addr = dest_addr;
-
-    // 初始化发送端    
-    if (!sender.initialize(sender_config) || !sender.open()) {
-        LOG_ERROR << "Failed to initialize UdpLink sender";
+    if (!sender.open(sender_config)) {
+        LOG_ERROR << "Failed to open UdpLink sender";
         return -1;
     }
 
     // 接收-发布测试
-    const size_t payload_size = 65535;
+    const size_t payload_size = 60000;
     std::vector<uint8_t> payload(payload_size, 0xAB);
     std::vector<uint8_t> recv_buf(payload_size, 0);
 
     LOG_INFO << "Classic publish latency test";
     for (int i=0; i<10; i++) {
         payload[0] = i;
-        sender.send(payload.data(), payload_size, dest_addr);
+        bool sent = sender.send(payload.data(), payload_size);
+        if (!sent) {
+            LOG_ERROR << "send() failed at iteration " << i;
+            continue;
+        }
         sleep(1);
         start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-        sender.receive(recv_buf.data(), payload_size, dest_addr);
-        if (publisher) {
-            publisher->publish(recv_buf.data(), payload.size());
+        MB_DDF::PhysicalLayer::DataPlane::Endpoint src_ep;
+        int32_t recv_len = sender.receive(recv_buf.data(), payload_size, src_ep, 1000 * 1000);
+        if (recv_len > 0) {
+            if (publisher) {
+                publisher->publish(recv_buf.data(), static_cast<size_t>(recv_len));
+            }
+        } else {
+            LOG_ERROR << "receive() failed or timed out at iteration " << i << ", ret=" << recv_len;
         }
     }
 
@@ -90,14 +91,19 @@ int main() {
     LOG_INFO << "Zero-copy publish latency test";  
     for (int i=0; i<10; i++) {
         payload[0] = i;
-        sender.send(payload.data(), payload_size, dest_addr);
+        bool sent = sender.send(payload.data(), payload_size);
+        if (!sent) {
+            LOG_ERROR << "send() failed at iteration " << i;
+            continue;
+        }
         sleep(1);
         start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();  
         if (publisher) {
             bool ok = publisher->publish_fill(payload.size(), [&](void* buf, size_t cap) -> size_t {
+                MB_DDF::PhysicalLayer::DataPlane::Endpoint src_ep;
                 size_t w = std::min(cap, payload.size());
-                sender.receive((uint8_t*)buf, w, dest_addr);
-                return w;
+                int32_t r = sender.receive(reinterpret_cast<uint8_t*>(buf), static_cast<uint32_t>(w), src_ep, 1000 * 1000);
+                return r > 0 ? static_cast<size_t>(r) : 0;
             });
             if (!ok) {
                 LOG_ERROR << "Zero-copy publish_fill failed at iteration " << i;

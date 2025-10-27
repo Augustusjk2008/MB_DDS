@@ -301,7 +301,6 @@ bool RingBuffer::wait_for_message(SubscriberState* subscriber, uint32_t timeout_
     uint64_t current_seq = header_->current_sequence.load(std::memory_order_acquire);
     
     if (current_seq >= expected_seq) {
-        LOG_INFO << "wait_for_message " << subscriber->subscriber_id << " " << current_seq << " " << expected_seq;
         return true;
     }
     

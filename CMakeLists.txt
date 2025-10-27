@@ -78,6 +78,13 @@ if(CROSS_COMPILE)
     message(STATUS "[Cross] CMAKE_SYSROOT=${CMAKE_SYSROOT}")
     message(STATUS "[Cross] CMAKE_C_COMPILER=${CMAKE_C_COMPILER}")
     message(STATUS "[Cross] CMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}")
+
+    # 额外的 ARM64 第三方库前缀（用于非 sysroot 的外部安装，如 /opt/arm64-libs）
+    set(ARM64_LIBS_PREFIX "$ENV{ARM64_LIBS_PREFIX}" CACHE PATH "Prefix for aarch64 third-party libs (libaio/liburing)" FORCE)
+    if(NOT ARM64_LIBS_PREFIX OR ARM64_LIBS_PREFIX STREQUAL "")
+        set(ARM64_LIBS_PREFIX "/opt/arm64-libs" CACHE PATH "Prefix for aarch64 third-party libs (libaio/liburing)" FORCE)
+    endif()
+    message(STATUS "[Cross] ARM64_LIBS_PREFIX=${ARM64_LIBS_PREFIX}")
 endif()
 
 # 递归查找核心库源文件（不含 PhysicalLayer）
@@ -113,8 +120,38 @@ if(BUILD_LIBS)
     add_library(MB_DDF_CORE STATIC ${CORE_SOURCES} ${HEADERS})
     add_library(MB_DDF_PHYSICAL STATIC ${PHYSICAL_SOURCES} ${HEADERS})
     add_library(MB_DDF_TIMER STATIC ${TIMER_SOURCES} ${HEADERS})
+    # 查找 libaio：优先 sysroot，失败后尝试 ARM64_LIBS_PREFIX
+    find_library(LIBAIO_LIBRARY NAMES aio)
+    find_path(LIBAIO_INCLUDE_DIR NAMES libaio.h)
+    if((NOT LIBAIO_LIBRARY OR NOT LIBAIO_INCLUDE_DIR) AND DEFINED ARM64_LIBS_PREFIX)
+        find_library(LIBAIO_LIBRARY NAMES aio PATHS "${ARM64_LIBS_PREFIX}/lib" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+        find_path(LIBAIO_INCLUDE_DIR NAMES libaio.h PATHS "${ARM64_LIBS_PREFIX}/include" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+    endif()
+    if(LIBAIO_LIBRARY AND LIBAIO_INCLUDE_DIR)
+        target_compile_definitions(MB_DDF_PHYSICAL PUBLIC MB_DDF_HAS_LIBAIO=1)
+        target_include_directories(MB_DDF_PHYSICAL PUBLIC ${LIBAIO_INCLUDE_DIR})
+        target_link_libraries(MB_DDF_PHYSICAL PUBLIC ${LIBAIO_LIBRARY})
+        message(STATUS "libaio found: ${LIBAIO_LIBRARY}; enabling MB_DDF_HAS_LIBAIO")
+    else()
+        message(STATUS "libaio not found; building without async DMA support")
+    endif()
 
-    # 为库添加包含目录
+    # 新增：检测并链接 liburing（优先启用 io_uring）
+    find_library(LIBURING_LIBRARY NAMES uring)
+    find_path(LIBURING_INCLUDE_DIR NAMES liburing.h)
+    if((NOT LIBURING_LIBRARY OR NOT LIBURING_INCLUDE_DIR) AND DEFINED ARM64_LIBS_PREFIX)
+        find_library(LIBURING_LIBRARY NAMES uring PATHS "${ARM64_LIBS_PREFIX}/lib" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+        find_path(LIBURING_INCLUDE_DIR NAMES liburing.h PATHS "${ARM64_LIBS_PREFIX}/include" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+    endif()
+    if(LIBURING_LIBRARY AND LIBURING_INCLUDE_DIR)
+        target_compile_definitions(MB_DDF_PHYSICAL PUBLIC MB_DDF_HAS_IOURING=1)
+        target_include_directories(MB_DDF_PHYSICAL PUBLIC ${LIBURING_INCLUDE_DIR})
+        target_link_libraries(MB_DDF_PHYSICAL PUBLIC ${LIBURING_LIBRARY})
+        message(STATUS "liburing found: ${LIBURING_LIBRARY}; enabling MB_DDF_HAS_IOURING")
+    else()
+        message(STATUS "liburing not found; io_uring async support disabled")
+    endif()
+
     foreach(TGT IN ITEMS MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TIMER)
         target_include_directories(${TGT} PUBLIC
             ${CMAKE_CURRENT_SOURCE_DIR}
@@ -130,34 +167,52 @@ if(BUILD_TESTS)
         "src/MB_DDF/Test/Test*.cpp"
     )
 
-    # 为每个Test程序创建可执行文件并按需链接库
     foreach(TEST_SOURCE ${TEST_SOURCES})
-        # 获取文件名（不含路径和扩展名）
         get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
-
-        # 创建可执行文件（只包含Test源文件）
         add_executable(${TEST_NAME} ${TEST_SOURCE})
-
-        # 设置包含目录
         target_include_directories(${TEST_NAME} PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/src
         )
 
         if(BUILD_LIBS)
-            # 如果构建了库，则链接库
-            if(TEST_NAME STREQUAL "TestMonitor" OR TEST_NAME STREQUAL "TestPublishPerf")
-                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_TIMER MB_DDF_PHYSICAL)
+            if(TEST_NAME STREQUAL "TestMonitor")
+                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TIMER)
+            elseif(TEST_NAME STREQUAL "TestPublishPerf")
+                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TIMER)
+            elseif(TEST_NAME STREQUAL "TestPhysicalLayer")
+                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_PHYSICAL MB_DDF_CORE MB_DDF_TIMER)
             else()
                 target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_TIMER)
             endif()
         else()
-            # 如果没有构建库，则直接编译源文件
-            target_sources(${TEST_NAME} PRIVATE ${CORE_SOURCES} ${TIMER_SOURCES})
             if(TEST_NAME STREQUAL "TestMonitor")
                 target_sources(${TEST_NAME} PRIVATE ${PHYSICAL_SOURCES})
             endif()
             target_link_libraries(${TEST_NAME} PRIVATE pthread rt)
+            # 如果直接编译 PhysicalLayer 源并且系统存在 libaio/liburing，则为测试链接
+            find_library(LIBAIO_LIBRARY NAMES aio)
+            find_path(LIBAIO_INCLUDE_DIR NAMES libaio.h)
+            if((NOT LIBAIO_LIBRARY OR NOT LIBAIO_INCLUDE_DIR) AND DEFINED ARM64_LIBS_PREFIX)
+                find_library(LIBAIO_LIBRARY NAMES aio PATHS "${ARM64_LIBS_PREFIX}/lib" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+                find_path(LIBAIO_INCLUDE_DIR NAMES libaio.h PATHS "${ARM64_LIBS_PREFIX}/include" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+            endif()
+            if(LIBAIO_LIBRARY AND LIBAIO_INCLUDE_DIR)
+                target_compile_definitions(${TEST_NAME} PRIVATE MB_DDF_HAS_LIBAIO=1)
+                target_include_directories(${TEST_NAME} PRIVATE ${LIBAIO_INCLUDE_DIR})
+                target_link_libraries(${TEST_NAME} PRIVATE ${LIBAIO_LIBRARY})
+            endif()
+            find_library(LIBURING_LIBRARY NAMES uring)
+            find_path(LIBURING_INCLUDE_DIR NAMES liburing.h)
+            if((NOT LIBURING_LIBRARY OR NOT LIBURING_INCLUDE_DIR) AND DEFINED ARM64_LIBS_PREFIX)
+                find_library(LIBURING_LIBRARY NAMES uring PATHS "${ARM64_LIBS_PREFIX}/lib" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+                find_path(LIBURING_INCLUDE_DIR NAMES liburing.h PATHS "${ARM64_LIBS_PREFIX}/include" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+            endif()
+            if(LIBURING_LIBRARY AND LIBURING_INCLUDE_DIR)
+                target_compile_definitions(${TEST_NAME} PRIVATE MB_DDF_HAS_IOURING=1)
+                target_include_directories(${TEST_NAME} PRIVATE ${LIBURING_INCLUDE_DIR})
+                target_link_libraries(${TEST_NAME} PRIVATE ${LIBURING_LIBRARY})
+            endif()
         endif()
     endforeach()
 endif()

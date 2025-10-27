@@ -2,6 +2,7 @@
 build/
 reference/
 .cache/
+docs/tmp/
 
 # 忽略 CMake 生成的文件
 CMakeCache.txt

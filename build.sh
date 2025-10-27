@@ -29,6 +29,7 @@ CROSS_ENV_SCRIPT_DEFAULT="$CROSS_SDK_DEFAULT/environment-setup-armv8a-ucas-linux
 CROSS_SYSROOT_DEFAULT="$CROSS_SDK_DEFAULT/sysroots/armv8a-ucas-linux"
 CROSS_C_COMPILER_DEFAULT="aarch64-ucas-linux-gcc"
 CROSS_CXX_COMPILER_DEFAULT="aarch64-ucas-linux-g++"
+ARM64_LIBS_PREFIX_DEFAULT="/opt/arm64-libs"
 
 # 显示帮助信息
 show_help() {
@@ -205,6 +206,7 @@ build_one() {
             CROSS_SYSROOT="${CROSS_SYSROOT:-$CROSS_SYSROOT_DEFAULT}"
             CROSS_C_COMPILER="${CROSS_C_COMPILER:-$CROSS_C_COMPILER_DEFAULT}"
             CROSS_CXX_COMPILER="${CROSS_CXX_COMPILER:-$CROSS_CXX_COMPILER_DEFAULT}"
+            ARM64_LIBS_PREFIX="${ARM64_LIBS_PREFIX:-$ARM64_LIBS_PREFIX_DEFAULT}"
             if [ ! -f "$CROSS_ENV_SCRIPT" ]; then
                 echo -e "${RED}未找到交叉编译环境脚本: $CROSS_ENV_SCRIPT${NC}"
                 exit 1
@@ -212,6 +214,15 @@ build_one() {
             # 注入 Yocto/UCAS 交叉环境
             source "$CROSS_ENV_SCRIPT"
             CMAKE_ARGS="$CMAKE_ARGS -DCROSS_COMPILE=ON"
+            CMAKE_ARGS="$CMAKE_ARGS -DARM64_LIBS_PREFIX=$ARM64_LIBS_PREFIX"
+            if [ -d "$ARM64_LIBS_PREFIX" ]; then
+                echo -e "${YELLOW}使用 ARM64 第三方库前缀: $ARM64_LIBS_PREFIX${NC}"
+                if [ -d "$ARM64_LIBS_PREFIX/lib" ]; then
+                    echo -e "${YELLOW}提示: 若链接失败，可将 ${ARM64_LIBS_PREFIX}/lib 添加到目标板运行时库路径${NC}"
+                fi
+            else
+                echo -e "${RED}警告: ARM64_LIBS_PREFIX 路径不存在: $ARM64_LIBS_PREFIX${NC}"
+            fi
             OE_TC_FILE="${OECORE_CMAKE_TOOLCHAIN_FILE:-$CMAKE_TOOLCHAIN_FILE}"
             if [ -n "$OE_TC_FILE" ] && [ -f "$OE_TC_FILE" ]; then
                 echo -e "${YELLOW}检测到 Yocto 工具链文件: $OE_TC_FILE${NC}"

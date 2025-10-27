@@ -49,7 +49,7 @@ public:
     static DDSCore& instance();
 
     // 版本号，用于共享内存布局升级
-    static const uint32_t VERSION = 0x00004004;
+    static const uint32_t VERSION = 0x00004005;
     
     /**
      * @brief 创建指定Topic的发布者

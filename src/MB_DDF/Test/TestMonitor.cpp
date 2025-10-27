@@ -1,7 +1,7 @@
 #include "MB_DDF/DDS/DDSCore.h"
 #include "MB_DDF/Debug/Logger.h"
 #include "MB_DDF/Monitor/DDSMonitor.h"
-#include "MB_DDF/PhysicalLayer/UdpLink.h"
+#include "MB_DDF/PhysicalLayer/DataPlane/UdpLink.h"
 
 // 测试监控器主程序
 int main(int argc, char* argv[]) {
@@ -58,28 +58,24 @@ int main(int argc, char* argv[]) {
     LOG_INFO << "DDS monitor initialized successfully";
 
     // 创建UDP发送端
-    MB_DDF::PhysicalLayer::UdpLink sender;
-    
-    // 配置发送端
+    MB_DDF::PhysicalLayer::DataPlane::UdpLink sender;
     MB_DDF::PhysicalLayer::LinkConfig sender_config;
-    sender_config.local_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.1.28", 9001); 
-    // sender_config.local_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.56.132", 9001); 
     sender_config.mtu = 32768;
-    
-    // 目标地址
-    auto dest_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.1.100", 9002);
-    // auto dest_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.56.1", 9002);
-    
-    
-    if (!sender.initialize(sender_config) || !sender.open()) {
-        LOG_ERROR << "Failed to initialize UdpLink sender";
+
+    // 本地|远端地址（按照新的 UdpLink 配置格式）
+    // 请根据实际网络调整 IP 与端口
+    // sender_config.name = "192.168.1.28:9001|192.168.1.100:9002";
+    sender_config.name = "192.168.56.132:9001|192.168.56.1:9002";
+
+    if (!sender.open(sender_config)) {
+        LOG_ERROR << "Failed to open UdpLink sender";
         if (send_snapshot) {
             return -1;
         }
     }
 
     // 设置监控回调
-    monitor.set_monitor_callback([&monitor, &sender, &dest_addr, print_info, send_snapshot](const MB_DDF::Monitor::DDSSystemSnapshot& snapshot) {
+    monitor.set_monitor_callback([&monitor, &sender, print_info, send_snapshot](const MB_DDF::Monitor::DDSSystemSnapshot& snapshot) {
         if (print_info) {
             std::cout << "\n=== 监控快照 (时间戳: " << snapshot.timestamp << ") ===" << std::endl;
             std::cout << "DDS版本号: " << MB_DDF::Monitor::DDSMonitor::version_to_string(snapshot.dds_version) 
@@ -90,7 +86,6 @@ int main(int argc, char* argv[]) {
             std::cout << "共享内存总大小: " << snapshot.total_shared_memory_size << " bytes" << std::endl;
             std::cout << "已使用内存: " << snapshot.used_shared_memory_size << " bytes" << std::endl;
                 
-            // 显示Topic信息
             for (const auto& topic : snapshot.topics) {
                 std::cout << "  Topic[" << topic.topic_id << "]: " << topic.topic_name 
                     << " (订阅者: " << topic.subscriber_count 
@@ -98,7 +93,6 @@ int main(int argc, char* argv[]) {
                     << ", 总消息: " << topic.total_messages << ")" << std::endl;
             }
                 
-            // 显示发布者信息
             for (const auto& pub : snapshot.publishers) {
                 std::cout << "  发布者[" << pub.publisher_id << "]: " << pub.publisher_name
                     << " -> " << pub.topic_name 
@@ -106,7 +100,6 @@ int main(int argc, char* argv[]) {
                     << ", 活跃: " << (pub.is_active ? "是" : "否") << ")" << std::endl;
             }
                 
-            // 显示订阅者信息
             for (const auto& sub : snapshot.subscribers) {
                 std::cout << "  订阅者[" << sub.subscriber_id << "]: " << sub.subscriber_name
                     << " <- " << sub.topic_name
@@ -117,15 +110,10 @@ int main(int argc, char* argv[]) {
         }
         
         if (send_snapshot) {
-            // 准备数据
-            // char data_buffer[5000];
-            // uint32_t message_len = monitor.serialize_to_binary(snapshot, data_buffer, 5000);        
             auto json_str = monitor.serialize_to_json(snapshot);
-            
-            // 发送数据
             if (!json_str.empty()) {
                 bool send_result = sender.send(reinterpret_cast<const uint8_t*>(json_str.c_str()), 
-                                    json_str.size(), dest_addr);
+                                    json_str.size());
                 if (!send_result) {
                     LOG_ERROR << "Failed to send snapshot data";
                 }

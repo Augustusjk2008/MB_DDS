@@ -34,11 +34,20 @@ MB_DDF/
 │   ├── Monitor/                # 监控模块
 │   │   ├── DDSMonitor.h/cpp    # DDS系统监控
 │   │   └── SharedMemoryAccessor.h/cpp # 共享内存访问器
-│   ├── PhysicalLayer/          # 物理层模块
-│   │   ├── BasicTypes.h        # 基础类型定义
-│   │   ├── IPhysicalLink.h     # 物理链路接口
-│   │   ├── BasePhysicalLink.h/cpp # 物理链路基类
-│   │   └── UdpLink.h/cpp       # UDP链路实现
+│   ├── PhysicalLayer/          # 物理层模块（数据面/控制面分层）
+│   │   ├── DataPlane/          # 数据面：统一链路接口与实现
+│   │   │   ├── ILink.h         # 统一数据面接口（send/receive、ioctl、事件）
+│   │   │   └── UdpLink.h/cpp   # UDP 链路实现
+│   │   ├── Device/             # 设备型链路适配器
+│   │   │   ├── TransportLinkAdapter.h # ILink 适配基类（桥接控制面）
+│   │   │   └── Rs422Device.h/cpp      # RS422 设备适配器（寄存器收发、ioctl配置）
+│   │   ├── ControlPlane/       # 控制面：设备/总线访问抽象
+│   │   │   ├── IDeviceTransport.h     # 控制面接口（寄存器、DMA、事件）
+│   │   │   ├── XdmaTransport.h/cpp    # XDMA 控制面实现（用户寄存器映射、事件）
+│   │   │   └── NullTransport.h        # 空实现/Mock（用于测试）
+│   │   ├── Support/            # 物理层通用支持
+│   │   │   └── Log.h           # 轻量日志宏（数据面/设备适配器使用）
+│   │   └── Types.h             # 通用类型（TransportConfig/LinkConfig/Endpoint等）
 │   ├── Timer/                  # 定时器模块
 │   │   ├── SystemTimer.h/cpp   # 高精度周期定时器（POSIX定时器 + 实时信号）
 │   │   └── ChronoHelper.h/cpp  # 时间转换与测量工具
@@ -222,19 +231,89 @@ int main() {
 }
 ```
 
-### 物理层地址配置
+## 物理层设计概览
+
+- 分层架构：
+  - 数据面（DataPlane）：统一链路接口 `ILink`，提供 `send/receive`、事件 fd、阻塞接收（超时）及通用 `ioctl`。
+  - 控制面（ControlPlane）：设备/总线访问抽象 `IDeviceTransport`，提供寄存器读写、DMA（可选）、事件等待等。
+  - 设备适配（Device）：`TransportLinkAdapter` 桥接控制面为数据面；`Rs422Device` 基于寄存器实现收发与配置。
+
+- 类型与配置：
+  - `TransportConfig`：控制面配置（设备路径、DMA通道、事件编号、设备偏移）。
+  - `LinkConfig`：链路配置（名称等，具体链路可自定义扩展）。
+  - `Endpoint`：数据面端点抽象（当前使用 `channel_id`，不同链路可对应端口/通道）。
+
+- UDP 链路：
+  - `UdpLink` 实现了 `ILink` 接口，使用非阻塞 socket；支持 `receive(buf, size, ep, timeout_us)` 基于 `poll` 的阻塞接收。
+
+- RS422 设备链路：
+  - `Rs422Device` 通过 `IDeviceTransport` 的寄存器映射访问设备；重载 `send/receive` 使用寄存器 BRAM 缓冲区与命令寄存器。
+  - `open()` 要求控制面已映射用户寄存器空间；`ioctl(IOCTL_CONFIG, Config)` 进行设备配置（UCR/MCR/BRSR/ICR/头字节等）。
+
+### UDP 链路示例
 
 ```cpp
-#include "MB_DDF/PhysicalLayer/BasicTypes.h"
+#include "MB_DDF/PhysicalLayer/DataPlane/UdpLink.h"
+#include "MB_DDF/Debug/Logger.h"
 
-// 创建CAN地址
-auto can_addr = MB_DDF::PhysicalLayer::Address::createCAN(0x123);
+using namespace MB_DDF::PhysicalLayer::DataPlane;
 
-// 创建UDP地址
-auto udp_addr = MB_DDF::PhysicalLayer::Address::createUDP("192.168.1.100", 8080);
+int main() {
+    LOG_SET_LEVEL_INFO();
+    UdpLink link;
+    LinkConfig cfg; // 可设置 name 等属性
+    if (!link.open(cfg)) {
+        LOG_ERROR << "UdpLink open failed";
+        return -1;
+    }
 
-// 创建串口地址
-auto serial_addr = MB_DDF::PhysicalLayer::Address::createSerial(1); // COM1
+    Endpoint ep{12345};
+    const char msg[] = "hello";
+    link.send(reinterpret_cast<const uint8_t*>(msg), sizeof(msg), ep);
+
+    uint8_t buf[256]; Endpoint src{};
+    int32_t n = link.receive(buf, sizeof(buf), src, 1000); // 1ms 超时
+    LOG_INFO << "received: " << n;
+    link.close();
+}
+```
+
+### RS422 设备示例（寄存器收发 + 配置）
+
+```cpp
+#include "MB_DDF/PhysicalLayer/Device/Rs422Device.h"
+#include "MB_DDF/PhysicalLayer/ControlPlane/XdmaTransport.h"
+#include "MB_DDF/Debug/Logger.h"
+
+using namespace MB_DDF::PhysicalLayer;
+
+int main() {
+    LOG_SET_LEVEL_INFO();
+
+    ControlPlane::XdmaTransport tp;
+    TransportConfig tp_cfg; tp_cfg.device_path = "rs422_0"; // /dev/xdma/rs422_0_user
+    if (!tp.open(tp_cfg)) { LOG_ERROR << "transport open failed"; return -1; }
+
+    Device::Rs422Device dev(tp, /*mtu*/2048);
+    LinkConfig link_cfg; if (!dev.open(link_cfg)) { LOG_ERROR << "device open failed"; return -1; }
+
+    // 配置（参考 rs422_config 功能）
+    Device::Rs422Device::Config c;
+    c.ucr = /*parity/check 编码值*/ 0x00; c.mcr = 0x20; c.brsr = /*baud*/ 0x03; c.icr = 1;
+    c.tx_head_lo = 0xAA; c.tx_head_hi = 0x55; c.rx_head_lo = 0xCC; c.rx_head_hi = 0x33;
+    int ret = dev.ioctl(Device::Rs422Device::IOCTL_CONFIG, &c, sizeof(c), nullptr, 0);
+    if (ret != 0) { LOG_ERROR << "ioctl config failed: " << ret; }
+
+    // 发送/接收（寄存器路径）
+    DataPlane::Endpoint ep{0};
+    uint8_t out[10] = {1,2,3,4,5};
+    dev.send(out, 5, ep);
+    uint8_t inb[256]; DataPlane::Endpoint src{};
+    int32_t n = dev.receive(inb, sizeof(inb), src, 1000);
+    LOG_INFO << "received: " << n;
+
+    dev.close(); tp.close();
+}
 ```
 
 ### 高精度定时器示例
@@ -297,7 +376,7 @@ void safe_register(MB_DDF::DDS::SharedMemoryManager* shm) {
 ### DDSCore
 - **功能**：DDS系统的主控制类，采用单例模式
 - **职责**：管理共享内存、Topic注册、发布者/订阅者创建
-- **版本**：当前版本 0.4.4
+- **版本**：当前版本 0.4.5
 
 ### 消息系统
 - **MessageHeader**：包含魔数、Topic ID、序列号、时间戳、数据大小和校验和
@@ -388,4 +467,4 @@ make debug  # 自动启动GDB调试第一个测试程序
 
 ---
 
-*最后更新：2025年10月22日*
+*最后更新：2025年10月27日*
