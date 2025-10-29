@@ -36,24 +36,22 @@ public:
         return true;
     }
 
-    bool send(const uint8_t* data, uint32_t len, const DataPlane::Endpoint& dst) override {
-        (void)dst; // 设备型后端通常不需要端点（或用队列号）
-        return tp_.dmaWriteAsync(h2c_ch_, data, len, device_offset_);
+    bool send(const uint8_t* data, uint32_t len) override {
+        return tp_.continuousWriteAsync(h2c_ch_, data, len, device_offset_);
     }
 
-    int32_t receive(uint8_t* buf, uint32_t buf_size, DataPlane::Endpoint& src) override {
-        (void)src;
-        bool ok = tp_.dmaReadAsync(c2h_ch_, buf, buf_size, device_offset_);
+    int32_t receive(uint8_t* buf, uint32_t buf_size) override {
+        bool ok = tp_.continuousReadAsync(c2h_ch_, buf, buf_size, device_offset_);
         if (!ok) return 0; // 无数据或错误以 0/负数区分，此处简化为无数据
         // 注意：若需要精确字节数，需设备侧协议支持；这里返回缓冲区大小的最小值
         return static_cast<int32_t>(buf_size);
     }
 
-    int32_t receive(uint8_t* buf, uint32_t buf_size, DataPlane::Endpoint& src, uint32_t timeout_us) override {
+    int32_t receive(uint8_t* buf, uint32_t buf_size, uint32_t timeout_us) override {
         uint32_t bitmap = 0;
         int ev = tp_.waitEvent(&bitmap, timeout_us / 1000);
         if (ev <= 0) return ev == 0 ? 0 : -1; // 0 超时；-1 错误
-        return receive(buf, buf_size, src);
+        return receive(buf, buf_size);
     }
 
     LinkStatus getStatus() const override { return status_; }
@@ -61,11 +59,11 @@ public:
 
     int getEventFd() const override { return tp_.getEventFd(); }
     int getIOFd() const override { return -1; }
-
-protected:
+    
     ControlPlane::IDeviceTransport& transport() { return tp_; }
     const ControlPlane::IDeviceTransport& transport() const { return tp_; }
 
+protected:
     // 纯虚：适配器的具体设备控制由派生类实现（寄存器读写集等）
     int ioctl(uint32_t opcode, const void* in, size_t in_len, void* out, size_t out_len) override = 0;
 

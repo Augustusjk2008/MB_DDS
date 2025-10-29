@@ -32,7 +32,7 @@ struct LinkConfig {
 
 // 控制面配置：设备路径与事件/通道编号等（保持后端无关的广义表达）
 struct TransportConfig {
-    std::string device_path;         // 设备文件/基路径（必需/可选视后端而定）
+    std::string device_path{"/dev/xdma0"};  // 设备文件/基路径（默认xdma，可选spi等）
     int dma_h2c_channel{-1};         // 主机到设备通道编号；<0 表示未启用
     int dma_c2h_channel{-1};         // 设备到主机通道编号；<0 表示未启用
     int event_number{-1};            // 事件设备编号；<0 表示未启用

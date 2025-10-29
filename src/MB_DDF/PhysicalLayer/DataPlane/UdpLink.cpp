@@ -106,7 +106,7 @@ bool UdpLink::close() {
     return true;
 }
 
-bool UdpLink::send(const uint8_t* data, uint32_t len, const Endpoint& dst) {
+bool UdpLink::send(const uint8_t* data, uint32_t len) {
     if (sock_fd_ < 0 || status_ != LinkStatus::OPEN) return false;
     const sockaddr* to = nullptr;
     socklen_t tolen = 0;
@@ -115,11 +115,7 @@ bool UdpLink::send(const uint8_t* data, uint32_t len, const Endpoint& dst) {
         to = reinterpret_cast<const sockaddr*>(&remote_->ss);
         tolen = remote_->len;
     } else {
-        // 若未指定远端，将 channel_id 作为端口，发送到本机
-        if (dst.channel_id <= 0) return false;
-        if (!makeSockAddrIPv4("127.0.0.1", static_cast<uint16_t>(dst.channel_id), tmp)) return false;
-        to = reinterpret_cast<const sockaddr*>(&tmp.ss);
-        tolen = tmp.len;
+        return false;
     }
     ssize_t n = ::sendto(sock_fd_, data, len, 0, to, tolen);
     if (n != static_cast<ssize_t>(len)) {
@@ -129,7 +125,7 @@ bool UdpLink::send(const uint8_t* data, uint32_t len, const Endpoint& dst) {
     return true;
 }
 
-int32_t UdpLink::receive(uint8_t* buf, uint32_t buf_size, Endpoint& src) {
+int32_t UdpLink::receive(uint8_t* buf, uint32_t buf_size) {
     // 仅在已打开状态下才允许接收；返回负数表示错误
     if (sock_fd_ < 0 || status_ != LinkStatus::OPEN) return -1;
     sockaddr_storage from{};
@@ -140,13 +136,6 @@ int32_t UdpLink::receive(uint8_t* buf, uint32_t buf_size, Endpoint& src) {
         LOGE("udp", "recvfrom", errno, "fd=%d", sock_fd_);
         return -1;
     }
-    // 提取源端口到 Endpoint.channel_id（IPv4）
-    if (from.ss_family == AF_INET) {
-        auto* sin = reinterpret_cast<sockaddr_in*>(&from);
-        src.channel_id = ntohs(sin->sin_port);
-    } else {
-        src.channel_id = -1;
-    }
     // 更新默认远端地址为最近的来源地址（learn remote）
     SockAddr sa{};
     sa.ss = from;
@@ -155,7 +144,7 @@ int32_t UdpLink::receive(uint8_t* buf, uint32_t buf_size, Endpoint& src) {
     return static_cast<int32_t>(n);
 }
 
-int32_t UdpLink::receive(uint8_t* buf, uint32_t buf_size, Endpoint& src, uint32_t timeout_us) {
+int32_t UdpLink::receive(uint8_t* buf, uint32_t buf_size, uint32_t timeout_us) {
     if (sock_fd_ < 0 || status_ != LinkStatus::OPEN) return -1;
     struct pollfd pfd{ sock_fd_, POLLIN, 0 };
     int timeout_ms = static_cast<int>(timeout_us / 1000);
@@ -166,7 +155,7 @@ int32_t UdpLink::receive(uint8_t* buf, uint32_t buf_size, Endpoint& src, uint32_
         return -1;       // 错误
     }
     if (pfd.revents & POLLIN) {
-        return receive(buf, buf_size, src);
+        return receive(buf, buf_size);
     }
     return 0;
 }

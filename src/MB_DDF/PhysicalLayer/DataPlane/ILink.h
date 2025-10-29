@@ -18,14 +18,6 @@ namespace MB_DDF {
 namespace PhysicalLayer {
 namespace DataPlane {
 
-// 端点：对数据面的目的地/来源进行抽象；后端可自行解释
-// - 对 UDP：可映射为源/目的端口（channel_id）或 socket 地址（未来扩展）
-// - 对 XDMA 适配：可映射为队列/通道号；当前以 channel_id 表达
-struct Endpoint {
-    int channel_id{-1};      // 对通道/队列模型可用；-1 表示未指定
-    // 未来可扩展：socket 地址结构、设备偏移等
-};
-
 class ILink {
 public:
     virtual ~ILink() = default;
@@ -35,9 +27,9 @@ public:
     virtual bool close() = 0;
 
     // 发送与接收
-    virtual bool     send(const uint8_t* data, uint32_t len, const Endpoint& dst) = 0;
-    virtual int32_t  receive(uint8_t* buf, uint32_t buf_size, Endpoint& src) = 0;                // 非阻塞：>0字节；0无数据；<0错误
-    virtual int32_t  receive(uint8_t* buf, uint32_t buf_size, Endpoint& src, uint32_t timeout_us) = 0; // 阻塞带超时
+    virtual bool     send(const uint8_t* data, uint32_t len) = 0;
+    virtual int32_t  receive(uint8_t* buf, uint32_t buf_size) = 0;                // 非阻塞：>0字节；0无数据；<0错误
+    virtual int32_t  receive(uint8_t* buf, uint32_t buf_size, uint32_t timeout_us) = 0; // 阻塞带超时
 
     // 状态与属性
     virtual LinkStatus getStatus() const = 0;

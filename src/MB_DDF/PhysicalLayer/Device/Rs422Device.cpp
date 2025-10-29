@@ -3,6 +3,7 @@
  */
 #include "MB_DDF/PhysicalLayer/Device/Rs422Device.h"
 #include "MB_DDF/PhysicalLayer/Support/Log.h"
+#include <cstdint>
 #include <cstring>
 #include <unistd.h>
 #include <errno.h>
@@ -28,10 +29,11 @@ static constexpr uint64_t RHH_reg  = 0x207; // 接收头高字节（8位）
 // static constexpr uint64_t TTH_reg  = 0x209; // 发送尾高字节（8位，可选）
 // static constexpr uint64_t RTL_reg  = 0x20A; // 接收尾低字节（8位，可选）
 // static constexpr uint64_t RTH_reg  = 0x20B; // 接收尾高字节（8位，可选）
+static constexpr uint64_t EVT_reg  = 0x20C; // 事件宽度寄存器（8位）
 
 static constexpr uint64_t CMD_reg  = 0x300; // 命令/状态寄存器（写入命令用 32 位，读取状态用 8 位）
 static constexpr uint64_t STU_reg  = 0x300; // 状态寄存器（与 CMD 同址，读 8 位）
-static constexpr uint64_t ERR_reg  = 0x301; // 错误寄存器（8位）
+static constexpr uint64_t ERR_reg  = 0x304; // 错误寄存器（8位）
 
 // 状态位
 static constexpr uint8_t STU_RX_READY_MASK = 0x01; // bit0：接收有数据
@@ -41,26 +43,13 @@ static constexpr uint8_t STU_TX_READY_MASK = 0x02; // bit1：发送可用
 static constexpr uint32_t CMD_TX = 0x81; // 触发发送
 static constexpr uint32_t CMD_RX = 0x82; // 触发接收
 
-// 8位寄存器读写（通过 32 位接口实现）
+// 寄存器读写
 inline bool readReg8(ControlPlane::IDeviceTransport& tp, uint64_t offset, uint8_t& val) {
-    uint64_t aligned = offset & ~0x3ULL;
-    uint32_t word = 0;
-    if (!tp.readReg32(aligned, word)) return false;
-    unsigned byte_index = static_cast<unsigned>(offset & 0x3ULL);
-    val = static_cast<uint8_t>((word >> (byte_index * 8)) & 0xFF);
-    return true;
+    return tp.readReg8(offset, val);
 }
-
 inline bool writeReg8(ControlPlane::IDeviceTransport& tp, uint64_t offset, uint8_t val) {
-    uint64_t aligned = offset & ~0x3ULL;
-    uint32_t word = 0;
-    if (!tp.readReg32(aligned, word)) return false;
-    unsigned byte_index = static_cast<unsigned>(offset & 0x3ULL);
-    uint32_t mask = ~(0xFFu << (byte_index * 8));
-    uint32_t new_word = (word & mask) | (static_cast<uint32_t>(val) << (byte_index * 8));
-    return tp.writeReg32(aligned, new_word);
+    return tp.writeReg8(offset, val);
 }
-
 inline bool readReg32(ControlPlane::IDeviceTransport& tp, uint64_t offset, uint32_t& val) {
     return tp.readReg32(offset, val);
 }
@@ -95,17 +84,21 @@ bool Rs422Device::close() {
     return TransportLinkAdapter::close();
 }
 
-bool Rs422Device::send(const uint8_t* data, uint32_t len, const DataPlane::Endpoint& dst) {
-    (void)dst;
+bool Rs422Device::send_full(const uint8_t* data) {
+    return send(data+1, data[0]);
+}
+
+bool Rs422Device::send(const uint8_t* data, uint32_t len) {
     auto& tp = transport();
     if (!data || len == 0) return true; // 空帧视为成功
     if (tp.getMappedBase() == nullptr) return false;
 
     // 检查发送就绪
-    uint8_t stu = 0;
-    if (!readReg8(tp, STU_reg, stu)) return false;
+    uint32_t stu = 0;
+    if (!readReg32(tp, STU_reg, stu)) return false;
     if ((stu & STU_TX_READY_MASK) != STU_TX_READY_MASK) {
         // 设备忙
+        LOGW("rs422", "send", 0, "device busy, stu=0x%02x", stu);
         return false;
     }
 
@@ -140,26 +133,29 @@ bool Rs422Device::send(const uint8_t* data, uint32_t len, const DataPlane::Endpo
     return true;
 }
 
-int32_t Rs422Device::receive(uint8_t* buf, uint32_t buf_size, DataPlane::Endpoint& src) {
-    (void)src;
+int32_t Rs422Device::receive_full(uint8_t* buf, uint32_t buf_size) {
+    int32_t len = receive(buf+1, buf_size);
+    buf[0] = static_cast<uint8_t>(len);
+    return len;
+}
+
+int32_t Rs422Device::receive(uint8_t* buf, uint32_t buf_size) {
     auto& tp = transport();
     if (!buf || buf_size == 0) return 0;
     if (tp.getMappedBase() == nullptr) return -1;
 
-    // 错误检查
-    uint8_t err = 0;
-    if (!readReg8(tp, ERR_reg, err)) return -1;
-    if (err != 0) {
-        // 设备返回错误，按 ILink 约定以负数表示错误
-        return -1;
-    }
-
     // 检查是否有数据
-    uint8_t stu = 0;
-    if (!readReg8(tp, STU_reg, stu)) return -1;
+    uint32_t stu = 0, err = 0;
+    if (!readReg32(tp, STU_reg, stu)) return -1;
+    if (!readReg32(tp, ERR_reg, err)) return -1;
     if ((stu & STU_RX_READY_MASK) == 0) {
         // 无数据
         return 0;
+    }
+    if (err != 0) {
+        // 设备返回错误，按 ILink 约定以负数表示错误
+        writeReg32(tp, ERR_reg, 1);
+        return -1;
     }
 
     // 触发接收命令，设备将接收缓冲区准备就绪
@@ -199,14 +195,24 @@ int32_t Rs422Device::receive(uint8_t* buf, uint32_t buf_size, DataPlane::Endpoin
     return static_cast<int32_t>(produced);
 }
 
-int32_t Rs422Device::receive(uint8_t* buf, uint32_t buf_size, DataPlane::Endpoint& src, uint32_t timeout_us) {
+int32_t Rs422Device::receive_full(uint8_t* buf, uint32_t buf_size, uint32_t timeout_us) {
+    int32_t len = receive(buf+1, buf_size, timeout_us);
+    buf[0] = static_cast<uint8_t>(len);
+    return len;
+}
+
+int32_t Rs422Device::receive(uint8_t* buf, uint32_t buf_size, uint32_t timeout_us) {
     // 若支持事件设备，则优先等待事件；否则轮询状态位直到超时
     auto& tp = transport();
     if (tp.getEventFd() >= 0) {
         uint32_t bitmap = 0;
         int ev = tp.waitEvent(&bitmap, timeout_us / 1000);
-        if (ev <= 0) return ev == 0 ? 0 : -1; // 0 超时；-1 错误
-        return receive(buf, buf_size, src);
+        // if (ev == 0) ev = ::read(tp.getEventFd(), &bitmap, sizeof(bitmap));
+        if (ev <= 0) {
+            LOGW("rs422", "waitEvent", ev, "waitEvent fd=%d, timeout=%u, bitmap=0x%08x", tp.getEventFd(), timeout_us, bitmap);
+            return ev == 0 ? 0 : -1; // 0 超时；-1 错误
+        }
+        return receive(buf, buf_size);
     }
 
     // 如果没有绑定 event 则轮询：每 100us 检查一次状态，直到超时或有数据
@@ -216,7 +222,7 @@ int32_t Rs422Device::receive(uint8_t* buf, uint32_t buf_size, DataPlane::Endpoin
         uint8_t stu = 0;
         if (!readReg8(tp, STU_reg, stu)) return -1;
         if ((stu & STU_RX_READY_MASK) != 0) {
-            return receive(buf, buf_size, src);
+            return receive(buf, buf_size);
         }
         usleep(step_us);
         waited += step_us;
@@ -225,8 +231,6 @@ int32_t Rs422Device::receive(uint8_t* buf, uint32_t buf_size, DataPlane::Endpoin
 }
 
 int Rs422Device::ioctl(uint32_t opcode, const void* in, size_t in_len, void* out, size_t out_len) {
-    (void)out; (void)out_len;
-
     auto& tp = transport();
     if (tp.getMappedBase() == nullptr || tp.getMappedLength() == 0) {
         LOGE("rs422", "ioctl", -1, "register space unmapped");
@@ -242,6 +246,10 @@ int Rs422Device::ioctl(uint32_t opcode, const void* in, size_t in_len, void* out
         }
 
         const Config* cfg = reinterpret_cast<const Config*>(in);
+        Config* cfg_out = reinterpret_cast<Config*>(out);
+
+        // 配置中断宽度
+        if (!writeReg8(tp, EVT_reg, 125))  { return -EIO; } 
 
         // 参考 rs422_config 的寄存器写序，并在每次写后短暂延时
         // UCR: UART 控制；MCR: 模式控制；BRSR: 波特率；ICR: 状态控制
@@ -256,10 +264,33 @@ int Rs422Device::ioctl(uint32_t opcode, const void* in, size_t in_len, void* out
         if (!writeReg8(tp, RHL_reg, cfg->rx_head_lo)) { return -EIO; } 
         if (!writeReg8(tp, RHH_reg, cfg->rx_head_hi)) { return -EIO; } 
 
-        LOGI("rs422", "ioctl", 0,
+        LOGI("rs422", "ioctl", opcode,
              "configured ucr=0x%02x mcr=0x%02x brsr=0x%02x icr=0x%02x tx_head=[0x%02x,0x%02x] rx_head=[0x%02x,0x%02x]",
              cfg->ucr, cfg->mcr, cfg->brsr, cfg->icr,
              cfg->tx_head_lo, cfg->tx_head_hi, cfg->rx_head_lo, cfg->rx_head_hi);
+
+        // 回读
+        uint32_t ret1, ret2;
+        if (!readReg32(tp, UCR_reg, ret1)) { return -EIO; } 
+        if (!readReg32(tp, THL_reg, ret2)) { return -EIO; } 
+
+        // 读取
+        if (out != nullptr && out_len >= sizeof(Config)) {
+            cfg_out->ucr = ret1 & 0xFF;
+            cfg_out->mcr = ret1 >> 8 & 0xFF;
+            cfg_out->brsr = ret1 >> 16 & 0xFF;
+            cfg_out->icr = ret1 >> 24 & 0xFF;
+
+            cfg_out->tx_head_lo = ret2 & 0xFF;
+            cfg_out->tx_head_hi = ret2 >> 8 & 0xFF;
+            cfg_out->rx_head_lo = ret2 >> 16 & 0xFF;
+            cfg_out->rx_head_hi = ret2 >> 24 & 0xFF;
+
+            LOGI("rs422", "ioctl", opcode,
+                "read back  ucr=0x%02x mcr=0x%02x brsr=0x%02x icr=0x%02x tx_head=[0x%02x,0x%02x] rx_head=[0x%02x,0x%02x]",
+                cfg_out->ucr, cfg_out->mcr, cfg_out->brsr, cfg_out->icr,
+                cfg_out->tx_head_lo, cfg_out->tx_head_hi, cfg_out->rx_head_lo, cfg_out->rx_head_hi);
+        }
 
         return 0; // 成功
     }

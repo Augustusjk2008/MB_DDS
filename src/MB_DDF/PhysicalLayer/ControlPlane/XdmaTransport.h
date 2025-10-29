@@ -32,15 +32,19 @@ public:
     // mmap 寄存器访问
     void* getMappedBase() const override { return user_base_; }
     size_t getMappedLength() const override { return mapped_len_; }
+    bool readReg8(uint64_t offset, uint8_t& val) const override;
+    bool writeReg8(uint64_t offset, uint8_t val) override;
+    bool readReg16(uint64_t offset, uint16_t& val) const override;
+    bool writeReg16(uint64_t offset, uint16_t val) override;
     bool readReg32(uint64_t offset, uint32_t& val) const override;
     bool writeReg32(uint64_t offset, uint32_t val) override;
 
     // 同步 DMA 接口
-    bool dmaWrite(int channel, const void* buf, size_t len) override;
-    bool dmaRead(int channel, void* buf, size_t len) override;
+    bool continuousWrite(int channel, const void* buf, size_t len) override;
+    bool continuousRead(int channel, void* buf, size_t len) override;
     // 带设备偏移的同步接口
-    bool dmaWriteAt(int channel, const void* buf, size_t len, uint64_t device_offset);
-    bool dmaReadAt(int channel, void* buf, size_t len, uint64_t device_offset);
+    bool continuousWriteAt(int channel, const void* buf, size_t len, uint64_t device_offset) override;
+    bool continuousReadAt(int channel, void* buf, size_t len, uint64_t device_offset) override;
     // 可选：设置默认设备偏移
     void setDefaultDeviceOffset(uint64_t off);
     void clearDefaultDeviceOffset();
@@ -50,12 +54,15 @@ public:
     int getEventFd() const override { return events_fd_; }
 
     // 全局异步完成回调设置
-    void setOnDmaWriteComplete(std::function<void(ssize_t)> cb) override { on_write_complete_ = std::move(cb); }
-    void setOnDmaReadComplete(std::function<void(ssize_t)> cb) override { on_read_complete_ = std::move(cb); }
+    void setOnContinuousWriteComplete(std::function<void(ssize_t)> cb) override { on_write_complete_ = std::move(cb); }
+    void setOnContinuousReadComplete(std::function<void(ssize_t)> cb) override { on_read_complete_ = std::move(cb); }
 
     // 异步 DMA 接口（优先 io_uring，其次 libaio）
-    bool dmaWriteAsync(int channel, const void* buf, size_t len, uint64_t device_offset) override;
-    bool dmaReadAsync(int channel, void* buf, size_t len, uint64_t device_offset) override;
+    bool continuousWriteAsync(int channel, const void* buf, size_t len, uint64_t device_offset) override;
+    bool continuousReadAsync(int channel, void* buf, size_t len, uint64_t device_offset) override;
+
+    // 非 SPI：原始传输不支持
+    bool xfer(const uint8_t* /*tx*/, uint8_t* /*rx*/, size_t /*len*/) override { return false; }
 
     // 完成收割 & 事件 FD 暴露（用于与上层 event loop 集成）
     int getAioEventFd() const;

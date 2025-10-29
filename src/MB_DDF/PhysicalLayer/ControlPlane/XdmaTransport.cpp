@@ -19,29 +19,25 @@
 #ifndef IOCB_FLAG_RESFD
 #define IOCB_FLAG_RESFD (1u << 0)
 #endif
+// 兼容不同 libaio 头文件中的操作码命名：
+// 某些发行版使用 IO_CMD_*，而代码使用 IOCB_CMD_*。
+// 如果缺少 IOCB_CMD_*，则映射到 IO_CMD_* 以保证编译通过。
+#ifndef IOCB_CMD_PWRITE
+#define IOCB_CMD_PWRITE IO_CMD_PWRITE
+#endif
+#ifndef IOCB_CMD_PREAD
+#define IOCB_CMD_PREAD IO_CMD_PREAD
+#endif
 #endif
 
 namespace MB_DDF {
 namespace PhysicalLayer {
 namespace ControlPlane {
 
-static inline uint32_t ltoh_u32(uint32_t x) {
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    return __builtin_bswap32(x);
-#else
-    return x;
-#endif
-}
-static inline uint32_t htol_u32(uint32_t x) {
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    return __builtin_bswap32(x);
-#else
-    return x;
-#endif
-}
-
 // 用于在 io_uring 的 user_data 内编码操作类型（最高位标记写）
+#if MB_DDF_HAS_IOURING
 static constexpr uint64_t kAioFlagWrite = (1ull << 63);
+#endif
 
 long XdmaTransport::page_size() {
     static long ps = ::sysconf(_SC_PAGESIZE);
@@ -65,6 +61,7 @@ bool XdmaTransport::open(const TransportConfig& cfg) {
         if (user_fd_ >= 0) {
             mapped_len_ = static_cast<size_t>(page_size());
             user_base_ = ::mmap(nullptr, mapped_len_, PROT_READ | PROT_WRITE, MAP_SHARED, user_fd_, cfg_.device_offset);
+            LOGI("xdma", "mmap_user", 0, "path=%s, offset=%ld, len=%ld", user.c_str(), cfg_.device_offset, mapped_len_);
             if (user_base_ == MAP_FAILED) {
                 LOGE("xdma", "mmap_user", errno, "path=%s, offset=%ld", user.c_str(), cfg_.device_offset);
                 user_base_ = nullptr;
@@ -144,7 +141,74 @@ bool XdmaTransport::open(const TransportConfig& cfg) {
     return true;
 }
 
+bool XdmaTransport::writeReg8(uint64_t offset, uint8_t val) {
+    if (!user_base_) {
+        LOGW("xdma", "writeReg8", ENODEV, "unmapped");
+        return false;
+    }
+    if (offset + sizeof(uint8_t) > mapped_len_) {
+        LOGE("xdma", "writeReg8", EINVAL, "offset=%llu len=%zu", (unsigned long long)offset, mapped_len_);
+        return false;
+    }
+    std::memcpy(static_cast<uint8_t*>(user_base_) + offset, &val, sizeof(val));
+    return true;
+}
+
+bool XdmaTransport::readReg8(uint64_t offset, uint8_t& val) const {
+    if (!user_base_) {
+        LOGW("xdma", "readReg8", ENODEV, "unmapped");
+        return false;
+    }
+    if (offset + sizeof(uint8_t) > mapped_len_) {
+        LOGE("xdma", "readReg8", EINVAL, "offset=%llu len=%zu", (unsigned long long)offset, mapped_len_);
+        return false;
+    }
+    val = static_cast<uint8_t>(*static_cast<const uint8_t*>(user_base_) + offset);
+    return true;
+}
+
+bool XdmaTransport::readReg16(uint64_t offset, uint16_t& val) const {
+    if (offset % sizeof(uint16_t) != 0) {
+        LOGE("xdma", "readReg16", EINVAL, "offset=%llu must be aligned", (unsigned long long)offset);
+        return false;
+    }
+    if (!user_base_) {
+        LOGW("xdma", "readReg16", ENODEV, "unmapped");
+        return false;
+    }
+    if (offset + sizeof(uint16_t) > mapped_len_) {
+        LOGE("xdma", "readReg16", EINVAL, "offset=%llu len=%zu", (unsigned long long)offset, mapped_len_);
+        return false;
+    }
+    uint16_t tmp = 0;
+    std::memcpy(&tmp, static_cast<const uint8_t*>(user_base_) + offset, sizeof(tmp));
+    val = ltoh_u16(tmp);
+    return true;
+}
+
+bool XdmaTransport::writeReg16(uint64_t offset, uint16_t val) {
+    if (offset % sizeof(uint16_t) != 0) {
+        LOGE("xdma", "writeReg16", EINVAL, "offset=%llu must be aligned", (unsigned long long)offset);
+        return false;
+    }
+    if (!user_base_) {
+        LOGW("xdma", "writeReg16", ENODEV, "unmapped");
+        return false;
+    }
+    if (offset + sizeof(uint16_t) > mapped_len_) {
+        LOGE("xdma", "writeReg16", EINVAL, "offset=%llu len=%zu", (unsigned long long)offset, mapped_len_);
+        return false;
+    }
+    uint16_t tmp = htol_u16(val);
+    std::memcpy(static_cast<uint8_t*>(user_base_) + offset, &tmp, sizeof(tmp));
+    return true;
+}
+
 bool XdmaTransport::readReg32(uint64_t offset, uint32_t& val) const {
+    if (offset % sizeof(uint32_t) != 0) {
+        LOGE("xdma", "readReg32", EINVAL, "offset=%llu must be aligned", (unsigned long long)offset);
+        return false;
+    }
     if (!user_base_) {
         LOGW("xdma", "readReg32", ENODEV, "unmapped");
         return false;
@@ -160,6 +224,10 @@ bool XdmaTransport::readReg32(uint64_t offset, uint32_t& val) const {
 }
 
 bool XdmaTransport::writeReg32(uint64_t offset, uint32_t val) {
+    if (offset % sizeof(uint32_t) != 0) {
+        LOGE("xdma", "writeReg32", EINVAL, "offset=%llu must be aligned", (unsigned long long)offset);
+        return false;
+    }
     if (!user_base_) {
         LOGW("xdma", "writeReg32", ENODEV, "unmapped");
         return false;
@@ -200,7 +268,7 @@ void XdmaTransport::close() {
     if (events_fd_ >= 0) { ::close(events_fd_); events_fd_ = -1; }
 }
 
-bool XdmaTransport::dmaWrite(int channel, const void* buf, size_t len) {
+bool XdmaTransport::continuousWrite(int channel, const void* buf, size_t len) {
     if (h2c_fd_ < 0 || channel != cfg_.dma_h2c_channel) return false;
     const uint8_t* p = static_cast<const uint8_t*>(buf);
     size_t remain = len;
@@ -219,7 +287,7 @@ bool XdmaTransport::dmaWrite(int channel, const void* buf, size_t len) {
     return true;
 }
 
-bool XdmaTransport::dmaWriteAt(int channel, const void* buf, size_t len, uint64_t device_offset) {
+bool XdmaTransport::continuousWriteAt(int channel, const void* buf, size_t len, uint64_t device_offset) {
     if (h2c_fd_ < 0 || channel != cfg_.dma_h2c_channel) return false;
     const uint8_t* p = static_cast<const uint8_t*>(buf);
     size_t remain = len;
@@ -238,7 +306,7 @@ bool XdmaTransport::dmaWriteAt(int channel, const void* buf, size_t len, uint64_
     return true;
 }
 
-bool XdmaTransport::dmaRead(int channel, void* buf, size_t len) {
+bool XdmaTransport::continuousRead(int channel, void* buf, size_t len) {
     if (c2h_fd_ < 0 || channel != cfg_.dma_c2h_channel) return false;
     uint8_t* p = static_cast<uint8_t*>(buf);
     size_t got = 0;
@@ -266,7 +334,7 @@ void XdmaTransport::clearDefaultDeviceOffset() {
     use_default_device_offset_ = false;
 }
 
- bool XdmaTransport::dmaReadAt(int channel, void* buf, size_t len, uint64_t device_offset) {
+ bool XdmaTransport::continuousReadAt(int channel, void* buf, size_t len, uint64_t device_offset) {
     if (c2h_fd_ < 0 || channel != cfg_.dma_c2h_channel) return false;
     uint8_t* p = static_cast<uint8_t*>(buf);
     size_t got = 0;
@@ -357,7 +425,7 @@ int XdmaTransport::drainAioCompletions(int max_events) {
     return 0;
 }
 
-bool XdmaTransport::dmaWriteAsync(int channel,
+bool XdmaTransport::continuousWriteAsync(int channel,
                                   const void* buf,
                                   size_t len,
                                   uint64_t device_offset) {
@@ -394,10 +462,10 @@ bool XdmaTransport::dmaWriteAsync(int channel,
         return true;
     }
 #endif
-    return dmaWriteAt(channel, buf, len, device_offset);
+    return continuousWriteAt(channel, buf, len, device_offset);
 }
 
-bool XdmaTransport::dmaReadAsync(int channel,
+bool XdmaTransport::continuousReadAsync(int channel,
                                  void* buf,
                                  size_t len,
                                  uint64_t device_offset) {
@@ -433,7 +501,7 @@ bool XdmaTransport::dmaReadAsync(int channel,
         return true;
     }
 #endif
-    return dmaReadAt(channel, buf, len, device_offset);
+    return continuousReadAt(channel, buf, len, device_offset);
 }
 
 } // namespace ControlPlane

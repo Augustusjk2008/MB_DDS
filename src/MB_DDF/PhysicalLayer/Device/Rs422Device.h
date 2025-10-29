@@ -1,6 +1,6 @@
 /**
  * @file Rs422Device.h
- * @brief 基于 XDMA 的 RS422 设备型数据面适配器（配置走寄存器，数据走 DMA）
+ * @brief 基于 XDMA 的 RS422 设备型数据面适配器
  */
 #pragma once
 
@@ -42,9 +42,14 @@ public:
     bool close() override;
 
     // 重载：基于寄存器的收发，不使用 DMA
-    bool    send(const uint8_t* data, uint32_t len, const DataPlane::Endpoint& dst) override;
-    int32_t receive(uint8_t* buf, uint32_t buf_size, DataPlane::Endpoint& src) override;
-    int32_t receive(uint8_t* buf, uint32_t buf_size, DataPlane::Endpoint& src, uint32_t timeout_us) override;
+    bool    send(const uint8_t* data, uint32_t len) override;
+    int32_t receive(uint8_t* buf, uint32_t buf_size) override;
+    int32_t receive(uint8_t* buf, uint32_t buf_size, uint32_t timeout_us) override;
+
+    // 包括帧长的组帧收发
+    bool    send_full(const uint8_t* data);
+    int32_t receive_full(uint8_t* buf, uint32_t buf_size);
+    int32_t receive_full(uint8_t* buf, uint32_t buf_size, uint32_t timeout_us);
 
     // ioctl 留空实现（待用户后续补充具体寄存器配置/查询语义）
     int ioctl(uint32_t opcode, const void* in, size_t in_len, void* out, size_t out_len) override;

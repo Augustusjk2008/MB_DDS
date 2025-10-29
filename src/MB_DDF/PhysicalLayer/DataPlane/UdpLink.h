@@ -33,9 +33,9 @@ public:
     bool open(const LinkConfig& cfg) override;
     bool close() override;
 
-    bool    send(const uint8_t* data, uint32_t len, const Endpoint& dst = {}) override;
-    int32_t receive(uint8_t* buf, uint32_t buf_size, Endpoint& src) override;
-    int32_t receive(uint8_t* buf, uint32_t buf_size, Endpoint& src, uint32_t timeout_us) override;
+    bool    send(const uint8_t* data, uint32_t len) override;
+    int32_t receive(uint8_t* buf, uint32_t buf_size) override;
+    int32_t receive(uint8_t* buf, uint32_t buf_size, uint32_t timeout_us) override;
 
     LinkStatus getStatus() const override;
     uint16_t   getMTU() const override;

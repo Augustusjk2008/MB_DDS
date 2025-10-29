@@ -27,13 +27,16 @@ public:
     int    waitEvent(uint32_t*, uint32_t) override { return 0; }
     int    getEventFd() const override { return -1; }
 
-    bool   dmaWrite(int, const void*, size_t) override { return false; }
-    bool   dmaRead(int, void*, size_t) override { return false; }
-    void   setOnDmaWriteComplete(std::function<void(ssize_t)> cb) override { (void)cb; }
-    void   setOnDmaReadComplete(std::function<void(ssize_t)> cb) override { (void)cb; }
+    void   setOnContinuousWriteComplete(std::function<void(ssize_t)> cb) override { (void)cb; }
+    void   setOnContinuousReadComplete(std::function<void(ssize_t)> cb) override { (void)cb; }
 
-    bool   dmaWriteAsync(int, const void*, size_t, uint64_t) override { return false; }
-    bool   dmaReadAsync(int, void*, size_t, uint64_t) override { return false; }
+    bool   continuousWrite(int, const void*, size_t) override { return false; }
+    bool   continuousRead(int, void*, size_t) override { return false; }
+    bool   continuousWriteAt(int, const void*, size_t, uint64_t) override { return false; }
+    bool   continuousReadAt(int, void*, size_t, uint64_t) override { return false; }
+    bool   continuousWriteAsync(int, const void*, size_t, uint64_t) override { return false; }
+    bool   continuousReadAsync(int, void*, size_t, uint64_t) override { return false; }
+    bool   xfer(const uint8_t*, uint8_t*, size_t) override { return false; }
 };
 
 } // namespace ControlPlane

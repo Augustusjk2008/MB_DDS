@@ -75,8 +75,7 @@ int main() {
         }
         sleep(1);
         start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-        MB_DDF::PhysicalLayer::DataPlane::Endpoint src_ep;
-        int32_t recv_len = sender.receive(recv_buf.data(), payload_size, src_ep, 1000 * 1000);
+        int32_t recv_len = sender.receive(recv_buf.data(), payload_size, 1000 * 1000);
         if (recv_len > 0) {
             if (publisher) {
                 publisher->publish(recv_buf.data(), static_cast<size_t>(recv_len));
@@ -100,9 +99,8 @@ int main() {
         start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();  
         if (publisher) {
             bool ok = publisher->publish_fill(payload.size(), [&](void* buf, size_t cap) -> size_t {
-                MB_DDF::PhysicalLayer::DataPlane::Endpoint src_ep;
                 size_t w = std::min(cap, payload.size());
-                int32_t r = sender.receive(reinterpret_cast<uint8_t*>(buf), static_cast<uint32_t>(w), src_ep, 1000 * 1000);
+                int32_t r = sender.receive(reinterpret_cast<uint8_t*>(buf), static_cast<uint32_t>(w), 1000 * 1000);
                 return r > 0 ? static_cast<size_t>(r) : 0;
             });
             if (!ok) {
