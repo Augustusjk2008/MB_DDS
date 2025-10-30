@@ -132,6 +132,18 @@ void SystemTimer::stop() {
     }
 }
 
+void SystemTimer::reset() {
+    if (!running_) return;
+
+    // 重置定时器
+    itimerspec its{};
+    memset(&its, 0, sizeof(its));
+    timespec ts = nsToTimespec(period_ns_);
+    its.it_value = ts;     // 首次到期
+    its.it_interval = ts;  // 周期
+    timer_settime(timer_id_, 0, &its, nullptr);
+}
+
 std::optional<pthread_t> SystemTimer::workerHandle() const {
     if (!worker_handle_valid_) return std::nullopt;
     return worker_handle_;

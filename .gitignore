@@ -3,6 +3,7 @@ build/
 reference/
 .cache/
 docs/tmp/
+buildlog.txt
 
 # 忽略 CMake 生成的文件
 CMakeCache.txt

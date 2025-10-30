@@ -22,8 +22,6 @@ namespace MB_DDF {
 namespace Timer {
 
 struct SystemTimerOptions {
-    // 兼容保留（不再使用）：始终采用独立定时线程 + 信号处理器
-    bool use_new_thread = false;          
     int sched_policy = SCHED_FIFO;        // 定时线程调度策略
     int priority = 50;                    // 定时线程优先级（SCHED_FIFO/RR 范围内有效）
     int cpu = -1;                         // 绑核编号，-1 表示不绑核
@@ -41,6 +39,9 @@ public:
 
     // 停止并删除定时器
     void stop();
+
+    // 定时器重新计时
+    void reset();
 
     // 是否正在运行
     bool isRunning() const { return running_; }

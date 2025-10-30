@@ -36,7 +36,7 @@ RingBuffer::RingBuffer(void* buffer, size_t size, sem_t* sem, bool enable_checks
         new (header_) RingHeader();
         header_->capacity = capacity_;
         header_->data_offset = metadata_size;
-        
+
         // 初始化订阅者注册表
         new (registry_) SubscriberRegistry();
     }
@@ -177,7 +177,7 @@ bool RingBuffer::set_publisher(uint64_t publisher_id, const std::string& publish
             LOG_INFO << "set_publisher " << publisher_id << " " << publisher_name << " (name unchanged)";
             return true;
         } else {
-            LOG_ERROR << "set_publisher failed, publisher already registered";
+            LOG_ERROR << "set_publisher failed, publisher already registered by " << header_->publisher_id << " " << header_->publisher_name;
         }
         return false;
     }

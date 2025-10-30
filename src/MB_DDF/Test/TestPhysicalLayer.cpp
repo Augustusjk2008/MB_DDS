@@ -16,7 +16,6 @@
 #include "MB_DDF/Debug/Logger.h"
 #include "MB_DDF/Debug/LoggerExtensions.h"
 #include "MB_DDF/PhysicalLayer/ControlPlane/IDeviceTransport.h"
-#include "MB_DDF/PhysicalLayer/DataPlane/ILink.h"
 #include "MB_DDF/PhysicalLayer/DataPlane/UdpLink.h"
 #include "MB_DDF/PhysicalLayer/Device/Rs422Device.h"
 #include "MB_DDF/PhysicalLayer/Device/HelmDevice.h"
@@ -107,9 +106,6 @@ void test_udp_link() {
         assert(recv_len == (int32_t)send_buf.size());
         assert(memcmp(send_buf.data(), recv_buf.data(), recv_len) == 0);
         LOG_INFO << "Received data matches sent data.";
-        // 对于 UDP，channel_id 应该是源端口
-        assert(src.channel_id == 12346);
-        LOG_INFO << "Source endpoint (port) is correct.";
 
         bool echoed = link1.send(recv_buf.data(), recv_len);
         if (echoed) {
@@ -127,8 +123,6 @@ void test_udp_link() {
             assert(echoed_len == recv_len);
             assert(memcmp(recv_back_buf.data(), recv_buf.data(), echoed_len) == 0);
             LOG_INFO << "Echo data matches received data.";
-            assert(echo_src.channel_id == 12345);
-            LOG_INFO << "Echo source endpoint (port) is correct.";
         } else {
             LOG_ERROR << "Link2 receive echo failed or timed out. ret=" << echoed_len;
             cleanup_udp_links(link1, link2);

@@ -363,8 +363,7 @@ int XdmaTransport::waitEvent(uint32_t* bitmap, uint32_t timeout_ms) {
         return -1;
     }
     if (pfd.revents & POLLIN) {
-        ::read(events_fd_, bitmap, sizeof(uint32_t));
-        return 1;
+        return ::read(events_fd_, bitmap, sizeof(uint32_t));
     }
     return 0;
 }
@@ -375,7 +374,7 @@ int XdmaTransport::drainAioCompletions(int max_events) {
     // 清理 aio_event_fd_ 计数（非阻塞）
     if (aio_event_fd_ >= 0) {
         uint64_t cnt = 0; (void)cnt;
-        ::read(aio_event_fd_, &cnt, sizeof(cnt));
+        int ret = ::read(aio_event_fd_, &cnt, sizeof(cnt));
     }
 #if MB_DDF_HAS_IOURING
     if (iouring_inited_) {

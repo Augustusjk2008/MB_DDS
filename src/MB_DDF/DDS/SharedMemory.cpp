@@ -138,7 +138,7 @@ bool SharedMemoryManager::create_or_open_semaphore() {
         if (sem_value == 0) {
             struct timespec ts;
             clock_gettime(CLOCK_REALTIME, &ts);
-            ts.tv_nsec += 20 * 1000000; // 20ms超时
+            ts.tv_nsec += 100 * 1000000; // 100ms超时
             
             // 处理纳秒溢出
             if (ts.tv_nsec >= 1000000000) {
