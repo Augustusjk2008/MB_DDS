@@ -92,16 +92,17 @@ void Subscriber::unsubscribe() {
     LOG_DEBUG << "Subscriber " << subscriber_id_ << " " << subscriber_name_ << " unregistered from ring buffer";
 }
 
-void Subscriber::worker_loop() {    
+void Subscriber::worker_loop() { 
+    size_t received_size = 0;   
     while (running_.load()) {
-        size_t received_size = 0;
+        received_size = 0;
         
         if (ring_buffer_->get_unread_count(subscriber_state_) > 0) {
             // 从环形缓冲区读取下一条消息
             Message* msg = nullptr;
             if (ring_buffer_->read_latest(subscriber_state_, msg)) {
                 received_size = msg->msg_size();
-                LOG_DEBUG << "Subscriber " << subscriber_name_ << " received message of total size: " << received_size;
+                LOG_DEBUG << "Subscriber " << subscriber_name_ << " received latest message of total size: " << received_size;
             }
             
             // 解析消息
@@ -118,6 +119,8 @@ void Subscriber::worker_loop() {
                 } else {                
                     LOG_ERROR << "Invalid message received on topic: " << metadata_->topic_name;
                 }
+            } else {
+                LOG_ERROR << "Invalid message size received on topic: " << metadata_->topic_name;
             }
         } else {
             // 等待通知以避免忙等待

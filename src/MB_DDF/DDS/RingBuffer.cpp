@@ -45,57 +45,32 @@ RingBuffer::RingBuffer(void* buffer, size_t size, sem_t* sem, bool enable_checks
 }
 
 bool RingBuffer::publish_message(const void* data, size_t size) {
-    size_t total_size = calculate_message_total_size(size);
-    
-    if (!can_write(total_size)) {
-        LOG_ERROR << "publish_message failed, not enough space";
+    // 校验请求大小是否合理（需包含消息头）
+    if (size + sizeof(MessageHeader) > capacity_) {
+        LOG_ERROR << "publish_message failed, message too large for ring capacity";
         return false;
     }
-    
-    // 当前需要写入的位置 to_write_pos
-    size_t to_write_pos = header_->write_pos.load(std::memory_order_acquire) % capacity_;
-    
-    // 在缓冲区中构造消息
-    Message* buffer_msg = reinterpret_cast<Message*>(data_ + to_write_pos);
-    
-    // 复制消息头部并设置序列号和时间戳
-    buffer_msg->header = MessageHeader();
-    buffer_msg->header.sequence = header_->current_sequence.fetch_add(1, std::memory_order_acq_rel) + 1;
-    
-    // 写入数据（如有）
-    if (data != nullptr) {
-        buffer_msg->header.data_size = size;
-        void* buffer_data = buffer_msg->get_data();
-        std::memcpy(buffer_data, data, size);
-    } else {
-        // 设置消息长度为0
-        buffer_msg->header.data_size = 0;
+
+    // 使用零拷贝预留/提交流程以确保连续写入并正确回绕
+    ReserveToken token = reserve(size);
+    if (!token.valid || token.msg == nullptr) {
+        LOG_ERROR << "publish_message failed, reserve returned invalid token";
+        return false;
     }
 
-    // 更新消息时戳和校验和
-    buffer_msg->update(enable_checksum_);
-
-    // 对齐到 ALIGNMENT
-    size_t new_write_pos = (to_write_pos + total_size) % capacity_;
-    // 确保新的写入位置对齐到ALIGNMENT边界
-    new_write_pos = (new_write_pos + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
-    if (new_write_pos >= capacity_) {
-        new_write_pos = 0; // 回绕到缓冲区开始
+    // 拷贝载荷
+    if (data != nullptr && size > 0) {
+        std::memcpy(token.msg->get_data(), data, size);
     }
-    
-    // 更新当前序列号和写入位置
-    header_->current_sequence.store(buffer_msg->header.sequence, std::memory_order_release);
-    header_->write_pos.store(new_write_pos, std::memory_order_release);
-    // 更新最新消息时间戳
-    header_->timestamp.store(buffer_msg->header.timestamp, std::memory_order_release);
-    
-    // 内存屏障确保消息完全写入后再通知
-    std::atomic_thread_fence(std::memory_order_release);
-    
-    // 通知订阅者
-    notify_subscribers();
-    
-    LOG_DEBUG << "publish_message " << buffer_msg->header.sequence << " with size " << size;
+
+    // 提交，topic_id保持为0以与旧实现一致
+    bool ok = commit(token, size, 0);
+    if (!ok) {
+        LOG_ERROR << "publish_message failed, commit failed";
+        return false;
+    }
+
+    LOG_DEBUG << "publish_message committed with size " << size;
     return true;
 }
 
@@ -159,9 +134,7 @@ uint64_t RingBuffer::get_unread_count(SubscriberState* subscriber) {
     }
     
     // 计算未读消息数量
-    uint64_t unread_count = buffer_current_seq - subscriber->last_read_sequence;
-    LOG_DEBUG << "get_unread_count " << unread_count;
-    return unread_count;
+    return buffer_current_seq - subscriber->last_read_sequence;
 }
 
 bool RingBuffer::read_latest(SubscriberState* subscriber, Message*& out_message) {
