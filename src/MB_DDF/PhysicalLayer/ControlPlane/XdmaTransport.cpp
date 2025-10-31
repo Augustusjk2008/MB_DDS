@@ -92,6 +92,10 @@ bool XdmaTransport::open(const TransportConfig& cfg) {
         events_fd_ = ::open(ev.c_str(), O_RDONLY | O_CLOEXEC);
         if (events_fd_ >= 0) set_nonblock(events_fd_);
         else LOGW("xdma", "open_events", errno, "path=%s", ev.c_str());
+        // 将 events_fd_ 的读取设为非阻塞
+        if (set_nonblock(events_fd_) < 0) {
+            LOGW("xdma", "open_events", errno, "set_nonblock failed");
+        }
     }
 
     // 初始化异步资源（如存在 DMA）
@@ -354,6 +358,7 @@ void XdmaTransport::clearDefaultDeviceOffset() {
 }
 
 int XdmaTransport::waitEvent(uint32_t* bitmap, uint32_t timeout_ms) {
+    (void)bitmap;
     if (events_fd_ < 0) return 0;
     struct pollfd pfd{ events_fd_, POLLIN, 0 };
     int ret = ::poll(&pfd, 1, static_cast<int>(timeout_ms));
@@ -363,7 +368,8 @@ int XdmaTransport::waitEvent(uint32_t* bitmap, uint32_t timeout_ms) {
         return -1;
     }
     if (pfd.revents & POLLIN) {
-        return ::read(events_fd_, bitmap, sizeof(uint32_t));
+        // return ::read(events_fd_, bitmap, sizeof(uint32_t));
+        return 4;
     }
     return 0;
 }
@@ -375,6 +381,7 @@ int XdmaTransport::drainAioCompletions(int max_events) {
     if (aio_event_fd_ >= 0) {
         uint64_t cnt = 0; (void)cnt;
         int ret = ::read(aio_event_fd_, &cnt, sizeof(cnt));
+        (void)ret;
     }
 #if MB_DDF_HAS_IOURING
     if (iouring_inited_) {

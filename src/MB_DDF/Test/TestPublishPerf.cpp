@@ -73,7 +73,7 @@ int main() {
 
     // 接收-发布测试
     const size_t payload_size = 61357;
-    uint32_t wait_usec = 10;
+    const uint32_t wait_usec = 10;
     std::vector<uint8_t> payload(payload_size, 0xAB);
     std::vector<uint8_t> recv_buf(payload_size, 0);
 
@@ -101,7 +101,7 @@ int main() {
             break;
         }
         sem_wait(&tr_sem);
-        usleep(wait_usec);
+        // usleep(wait_usec);
     }
     LOG_INFO << test1 << " completed";
     LOG_INFO << "average t & r delay: " << tr_delay / 1000.0 / num_messages << " us";
@@ -134,7 +134,7 @@ int main() {
             }
         }
         sem_wait(&tr_sem);
-        usleep(wait_usec);
+        // usleep(wait_usec);
     }
     LOG_INFO << test2 << " completed";
     LOG_INFO << "average t & r delay: " << tr_delay / 1000.0 / num_messages << " us";

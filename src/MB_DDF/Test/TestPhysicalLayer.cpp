@@ -15,12 +15,10 @@
 
 #include "MB_DDF/Debug/Logger.h"
 #include "MB_DDF/Debug/LoggerExtensions.h"
-#include "MB_DDF/PhysicalLayer/ControlPlane/IDeviceTransport.h"
 #include "MB_DDF/PhysicalLayer/DataPlane/UdpLink.h"
 #include "MB_DDF/PhysicalLayer/Device/Rs422Device.h"
 #include "MB_DDF/PhysicalLayer/Device/HelmDevice.h"
 #include "MB_DDF/PhysicalLayer/ControlPlane/XdmaTransport.h"
-#include "MB_DDF/PhysicalLayer/Device/TransportLinkAdapter.h"
 #include "MB_DDF/Timer/ChronoHelper.h"
 
 // --- 测试用例 ---
@@ -153,8 +151,8 @@ void test_rs422_device() {
     ControlPlane::XdmaTransport transport;
     TransportConfig cfg_tp;
     cfg_tp.device_path = "/dev/xdma0";
-    cfg_tp.event_number = 1;
-    cfg_tp.device_offset = 0x10000;
+    cfg_tp.event_number = 4;
+    cfg_tp.device_offset = 0x40000;
     
     LOG_INFO << "Attempting to open XdmaTransport with path: " << cfg_tp.device_path;
     LOG_INFO << "Note: This requires " << cfg_tp.device_path << "_* device nodes.";
@@ -219,16 +217,17 @@ void test_rs422_device() {
     for (int i=0; i<test_mtu; i++) {
         buf.data()[i] = i;
     }
-    adapter_422.receive(buf_r.data(), buf.size(), 100000);
+    adapter_422.receive(buf_r.data(), buf.size(), 10000);
+    LOG_INFO << "Clear old data.";
     MB_DDF::Timer::ChronoHelper::timingAverage(1000, [&]() {
         static bool err = false;
         if (err) return;
         buf.data()[1] += 1;
         adapter_422.send(buf.data(), test_mtu);
-        int received = adapter_422.receive(buf_r.data(), buf.size(), 100000);
+        int received = adapter_422.receive(buf_r.data(), buf.size(), 10000);
         if (received != test_mtu) {
             LOG_ERROR << "receive() failed or timed out. ret=" << received;
-            // err = true;
+            err = true;
         } else if (memcmp(buf.data(), buf_r.data(), received) != 0) {
             LOG_ERROR << "Received data does not match sent data.";
             // 打印数据
@@ -269,7 +268,13 @@ void test_helm_transport() {
     }
 
     // 打印 AD 和 PWM duty
+    const float K_IN_OUT = 311.22;
+    const float K_IN_OUT_1 = 1 / K_IN_OUT;
     LOG_INFO << "Helm ad is: " << fdb[0] << " " << fdb[1] << " " << fdb[2] << " " << fdb[3];
+    LOG_INFO << "Helm degree is: " << K_IN_OUT_1 * static_cast<short>(fdb[0]) 
+    << " " << K_IN_OUT_1 * static_cast<short>(fdb[1]) 
+    << " " << K_IN_OUT_1 * static_cast<short>(fdb[2]) 
+    << " " << K_IN_OUT_1 * static_cast<short>(fdb[3]);
     LOG_INFO << "Helm pwm set : " << v_input[0] << " " << v_input[1] << " " << v_input[2] << " " << v_input[3];
     LOG_INFO << "Helm pwm get : " << v_output[0] << " " << v_output[1] << " " << v_output[2] << " " << v_output[3];
 
@@ -350,23 +355,27 @@ void test_ddr_transport() {
     struct pollfd pfd{ efd, POLLIN, 0 };
     ddr.setOnContinuousWriteComplete([&](ssize_t ret) {
         (void)ret;
-        MB_DDF::Timer::ChronoHelper::clockEnd(0);
+        MB_DDF::Timer::ChronoHelper::clockEnd(1);
         LOG_INFO << "DMA write completed.";
     }); 
     ddr.setOnContinuousReadComplete([&](ssize_t ret) {
         (void)ret;
-        MB_DDF::Timer::ChronoHelper::clockEnd(1);
+        MB_DDF::Timer::ChronoHelper::clockEnd(3);
         LOG_INFO << "DMA read completed.";
     });
     MB_DDF::Timer::ChronoHelper::clockStart(0);
+    MB_DDF::Timer::ChronoHelper::clockStart(1);
     ddr.continuousWriteAsync(0, data.data(), DATA_SIZE, 0);
+    MB_DDF::Timer::ChronoHelper::clockEnd(0);
     int rc = ::poll(&pfd, 1, -1);
     if (rc < 0) {
         LOG_ERROR << "poll error: " << strerror(errno);
     }
     ddr.drainAioCompletions(10);
-    MB_DDF::Timer::ChronoHelper::clockStart(1);
+    MB_DDF::Timer::ChronoHelper::clockStart(2);
+    MB_DDF::Timer::ChronoHelper::clockStart(3);
     ddr.continuousReadAsync(0, back.data(), DATA_SIZE, 0);
+    MB_DDF::Timer::ChronoHelper::clockEnd(2);
     rc = ::poll(&pfd, 1, -1);
     if (rc < 0) {
         LOG_ERROR << "poll error: " << strerror(errno);

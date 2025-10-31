@@ -26,13 +26,14 @@ struct SystemTimerOptions {
     int priority = 50;                    // 定时线程优先级（SCHED_FIFO/RR 范围内有效）
     int cpu = -1;                         // 绑核编号，-1 表示不绑核
     int signal_no = SIGRTMIN;             // 使用的实时信号编号
+    void* user_data = nullptr;            // 回调函数用户数据指针
 };
 
 class SystemTimer {
 public:
     // 一次性接口：解析周期字符串、安装信号、创建并启动高精度周期定时器
     static std::unique_ptr<SystemTimer> start(const std::string& period_str,
-                                              std::function<void()> callback,
+                                              std::function<void(void*)> callback,
                                               const SystemTimerOptions& opt = {});
 
     ~SystemTimer();
@@ -53,7 +54,7 @@ public:
     static void configureThread(pthread_t th, int policy, int priority, int cpu);
 
 private:
-    explicit SystemTimer(std::function<void()> cb, const SystemTimerOptions& opt);
+    explicit SystemTimer(std::function<void(void*)> cb, const SystemTimerOptions& opt);
 
     // 解析周期字符串（支持 s/ms/us/ns），返回纳秒
     static long long parsePeriodNs(const std::string& period);
@@ -70,8 +71,9 @@ private:
     timer_t timer_id_{};
     bool running_ = false;
     int signal_no_ = SIGRTMIN;
+    void* user_data_ = nullptr;          // 回调函数用户数据指针
 
-    std::function<void()> callback_;
+    std::function<void(void*)> callback_;
 
     std::optional<std::thread> worker_;
     pthread_t worker_handle_{};         // 缓存原生句柄以支持 const 访问

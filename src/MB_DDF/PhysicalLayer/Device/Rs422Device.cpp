@@ -207,7 +207,6 @@ int32_t Rs422Device::receive(uint8_t* buf, uint32_t buf_size, uint32_t timeout_u
     if (tp.getEventFd() >= 0) {
         uint32_t bitmap = 0;
         int ev = tp.waitEvent(&bitmap, timeout_us / 1000);
-        // if (ev == 0) ev = ::read(tp.getEventFd(), &bitmap, sizeof(bitmap));
         if (ev <= 0) {
             LOGW("rs422", "waitEvent", ev, "waitEvent fd=%d, timeout=%u, bitmap=0x%08x", tp.getEventFd(), timeout_us, bitmap);
             return ev == 0 ? 0 : -1; // 0 超时；-1 错误

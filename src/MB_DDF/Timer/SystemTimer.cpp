@@ -21,8 +21,9 @@ std::unordered_set<int> g_installed_signals;
 std::mutex g_install_mtx;
 }
 
-SystemTimer::SystemTimer(std::function<void()> cb, const SystemTimerOptions& opt)
+SystemTimer::SystemTimer(std::function<void(void*)> cb, const SystemTimerOptions& opt)
     : signal_no_(opt.signal_no),
+      user_data_(opt.user_data),
       callback_(std::move(cb)) {}
 
 SystemTimer::~SystemTimer() {
@@ -30,7 +31,7 @@ SystemTimer::~SystemTimer() {
 }
 
 std::unique_ptr<SystemTimer> SystemTimer::start(const std::string& period_str,
-                                                std::function<void()> callback,
+                                                std::function<void(void*)> callback,
                                                 const SystemTimerOptions& opt) {
     if (!callback) throw std::invalid_argument("callback must not be empty");
 
@@ -211,7 +212,7 @@ void SystemTimer::signalHandler(int /*signo*/, siginfo_t* info, void* /*ucontext
 
 void SystemTimer::invokeFromSignal() {
     if (callback_) {
-        callback_();
+        callback_(user_data_);
     }
 }
 
