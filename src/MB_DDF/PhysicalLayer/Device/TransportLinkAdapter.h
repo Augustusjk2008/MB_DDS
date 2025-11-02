@@ -63,9 +63,17 @@ public:
     ControlPlane::IDeviceTransport& transport() { return tp_; }
     const ControlPlane::IDeviceTransport& transport() const { return tp_; }
 
-protected:
     // 纯虚：适配器的具体设备控制由派生类实现（寄存器读写集等）
     int ioctl(uint32_t opcode, const void* in, size_t in_len, void* out, size_t out_len) override = 0;
+
+protected:    
+    // 寄存器读写便捷封装
+    inline bool rd8(uint64_t off, uint8_t& v) { return tp_.readReg8(off, v); }
+    inline bool wr8(uint64_t off, uint8_t v) { return tp_.writeReg8(off, v); }
+    inline bool rd16(uint64_t off, uint16_t& v) { return tp_.readReg16(off, v); }
+    inline bool wr16(uint64_t off, uint16_t v) { return tp_.writeReg16(off, v); }
+    inline bool rd32(uint64_t off, uint32_t& v) { return tp_.readReg32(off, v); }
+    inline bool wr32(uint64_t off, uint32_t v) { return tp_.writeReg32(off, v); }
 
 private:
     ControlPlane::IDeviceTransport& tp_;

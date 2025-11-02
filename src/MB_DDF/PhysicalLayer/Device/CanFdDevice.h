@@ -22,7 +22,9 @@ struct CanFrame {
     bool     rtr{false}; // 远程帧
     bool     fdf{false}; // CANFD 帧（EDL=1）
     bool     brs{false}; // 位速率切换（CANFD）
+    bool     esi{false}; // 错误状态指示（CANFD）
     uint8_t  dlc{0};     // DLC 0..15
+    uint8_t  len{0};     // 数据长度 0..64 字节
     std::vector<uint8_t> data; // 0..64 字节
 };
 
@@ -43,25 +45,64 @@ public:
     int32_t receive(uint8_t* buf, uint32_t buf_size) override;
     int32_t receive(uint8_t* buf, uint32_t buf_size, uint32_t timeout_us) override;
 
-protected:
+    // 发送接收帧语义实现
+    bool send(CanFrame& frame);
+    int32_t receive(CanFrame& frame);
+
+    // 设备控制：配置参数、查询状态
     int ioctl(uint32_t opcode, const void* in, size_t in_len, void* out, size_t out_len) override;
 
 private:
-    // 寄存器读写便捷封装
-    inline bool rd32(uint64_t off, uint32_t& v) { return transport().readReg32(off, v); }
-    inline bool wr32(uint64_t off, uint32_t v) { return transport().writeReg32(off, v); }
-
     // DLC 到字节长度映射（支持 CAN/CANFD 常用编码）
     static uint8_t dlc_to_len(uint8_t dlc);
     static uint8_t len_to_dlc(uint8_t len);
 
-    // 帧序列化到 TX FIFO（基址为 0x0100 起）；返回是否成功
-    bool write_one_frame_to_txfifo(const CanFrame& f);
-    // 从 RX FIFO 读取一帧（FIFO0）；返回是否成功并填充 out
-    bool read_one_frame_from_rxfifo(CanFrame& out);
-
     // 触发发送：将任意可用 TX 缓冲标记为准备好（简化为全掩码）
     bool trigger_transmit();
+
+    // 下面为真实 CANFD 硬件操作
+    // 返回可用发送缓冲区索引
+    uint32_t __axiCanfdGetFreeBuffer(void);
+    // 计算TRR bit位
+    uint32_t __axiCanfdTrrValGetSetBitPosition(uint32_t uiValue) const;
+    // CANFD字节序转换
+    uint32_t __axiEndianSwap32(uint32_t uiData) const;
+    // 中断使能
+    void __axiCanfdInterruptEnable(uint32_t uiMask);
+    // 设备滤波使能
+    void __axiCanfdAcceptFilterEnable(uint32_t uiFilterIndexMask);
+    // 滤波设置
+    int __axiCanfdAcceptFilterSet(uint32_t uiFilterIndex, uint32_t uiMaskValue, uint32_t uiIdValue);
+    // 设备滤波禁用
+    void __axiCanfdAcceptFilterDisable(uint32_t uiFilterIndexMask);
+    // 设备滤波设置
+    uint32_t __axiCanfdSetFilter(uint32_t uiFilterIndex, uint32_t uiMask, uint32_t uiId);
+    // 获取CANFD模式
+    uint8_t __axiCanfdGetMode(void);
+    // CANFD位时间设置
+    int __axiCanfdSetBitTiming(uint8_t ucSyncJumpWidth, uint8_t ucTimeSegment2, uint16_t ucTimeSegment1);
+    // 设置仲裁域波特率
+    int __axiCanfdSetBaudRatePrescaler(uint8_t ucPrescaler);
+    // 设置数据域位时间
+    int __axiCanfdSetFBitTiming(uint8_t ucSyncJumpWidth, uint8_t ucTimeSegment2, uint8_t ucTimeSegment1);
+    // 设置数据域波特率
+    int __axiCanfdSetFBaudRatePrescaler(uint8_t ucPrescaler);
+    // CANFD模式切换
+    int __axiCanfdEnterMode(uint8_t ucMode);
+    // 禁用正常模式下的波特率切换功能
+    void __axiCanfdSetBitRateSwitchDisableNominal(void);
+    // CANFD硬件初始化
+    int __axiCanfdHwInit(void);
+    // CANFD发送
+    int __axiCanfdSend(CanFrame *pCanFrame);
+    // CANFD接收（FIFO模式）
+    int __axiCanfdRecvFifo(CanFrame *pCanFrame);
+    // CANFD控制函数
+    int __axiCanfdIoctl(int iCmd, void* lArg);
+    // 处理CANFD总线离线事件
+    void __axiCanfdPeeBusOffHandler();
+    // CANFD中断处理
+    int __axiCanfdIrqHandel();
 };
 
 } // namespace Device

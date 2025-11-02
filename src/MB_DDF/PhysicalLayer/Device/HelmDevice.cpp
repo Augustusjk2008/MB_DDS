@@ -48,7 +48,6 @@ bool HelmDevice::close() {
 }
 
 bool HelmDevice::send(const uint8_t* data, uint32_t len) {
-    auto& tp = transport();
     // 输入数据应为 4 路 32 位占空比，总长至少 16 字节
     if (!data || len < static_cast<uint32_t>(HELM_NUM * sizeof(uint32_t))) {
         LOGE("helm", "send", -1, "invalid pwm payload len=%u", len);
@@ -60,7 +59,7 @@ bool HelmDevice::send(const uint8_t* data, uint32_t len) {
         uint32_t duty = 0;
         std::memcpy(&duty, data + i * sizeof(uint32_t), sizeof(uint32_t));
         // 与测试保持一致：驱动使用小端；写入 32 位值到 addrOutputAd + i*4
-        if (!tp.writeReg32(ADDR_OUTPUT_PWM + i * 4, duty)) {
+        if (!wr32(ADDR_OUTPUT_PWM + i * 4, duty)) {
             LOGE("helm", "send", -1, "write pwm[%d] failed", i);
             return false;
         }
@@ -69,7 +68,6 @@ bool HelmDevice::send(const uint8_t* data, uint32_t len) {
 }
 
 int32_t HelmDevice::receive(uint8_t* buf, uint32_t buf_size) {
-    auto& tp = transport();
     // 输出需要容纳 4 路 16 位 AD 值（共 8 字节）
     if (!buf || buf_size < static_cast<uint32_t>(HELM_NUM * sizeof(uint16_t))) {
         return -1;
@@ -78,7 +76,7 @@ int32_t HelmDevice::receive(uint8_t* buf, uint32_t buf_size) {
     for (int i = 0; i < HELM_NUM; ++i) {
         uint16_t ad = 0;
         // reference 驱动按 (i+1)*4 偏移读取 16 位
-        if (!tp.readReg16((i + 1) * 4, ad)) {
+        if (!rd16((i + 1) * 4, ad)) {
             LOGE("helm", "receive", -1, "read ad[%d] failed", i);
             return -1;
         }
@@ -89,25 +87,24 @@ int32_t HelmDevice::receive(uint8_t* buf, uint32_t buf_size) {
 
 int32_t HelmDevice::receive(uint8_t* buf, uint32_t buf_size, uint32_t timeout_us) {
     // 按需求：带超时的 receive 直接调用非阻塞 receive
+    (void)timeout_us;
     return receive(buf, buf_size);
 }
 
 int HelmDevice::ioctl(uint32_t opcode, const void* in, size_t in_len, void* out, size_t out_len) {
-    auto& tp = transport();
-
     switch (opcode) {
     case IOCTL_HELM: {
         if (!in || in_len < sizeof(Config)) {
             return -1; // 参数错误
         }
         const Config* cfg = static_cast<const Config*>(in);
-        if (!tp.writeReg16(ADDR_HELM_ENABLE, 0xDAE0)) return -1;
-        if (!tp.writeReg16(ADDR_PARA_NUM_AD, 44)) return -1;
-        if (!tp.writeReg16(ADDR_PARA_AD, cfg->pwm_freq)) return -1;
-        if (!tp.writeReg16(ADDR_FILTER_ENABLE, cfg->ad_filter)) return -1;
-        if (!tp.writeReg16(ADDR_HELM_ENABLE, 0xEAE0)) return -1;
-        if (!tp.writeReg16(ADDR_PWM_ENABLE, 0xEA8C)) return -1;
-        if (!tp.writeReg16(ADDR_OUT_ENABLE_AD, cfg->out_enable)) return -1; // 输出使能
+        if (!wr16(ADDR_HELM_ENABLE, 0xDAE0)) return -1;
+        if (!wr16(ADDR_PARA_NUM_AD, 44)) return -1;
+        if (!wr16(ADDR_PARA_AD, cfg->pwm_freq)) return -1;
+        if (!wr16(ADDR_FILTER_ENABLE, cfg->ad_filter)) return -1;
+        if (!wr16(ADDR_HELM_ENABLE, 0xEAE0)) return -1;
+        if (!wr16(ADDR_PWM_ENABLE, 0xEA8C)) return -1;
+        if (!wr16(ADDR_OUT_ENABLE_AD, cfg->out_enable)) return -1; // 输出使能
 
         initialized_ = true;
         LOGI("helm", "ioctl", 0, "initialized pwm_freq=%u out_enable=0x%04x ad_filter=%u",

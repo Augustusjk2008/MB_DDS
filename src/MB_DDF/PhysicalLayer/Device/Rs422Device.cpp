@@ -42,20 +42,6 @@ static constexpr uint8_t STU_TX_READY_MASK = 0x02; // bit1：发送可用
 // 命令值
 static constexpr uint32_t CMD_TX = 0x81; // 触发发送
 static constexpr uint32_t CMD_RX = 0x82; // 触发接收
-
-// 寄存器读写
-inline bool readReg8(ControlPlane::IDeviceTransport& tp, uint64_t offset, uint8_t& val) {
-    return tp.readReg8(offset, val);
-}
-inline bool writeReg8(ControlPlane::IDeviceTransport& tp, uint64_t offset, uint8_t val) {
-    return tp.writeReg8(offset, val);
-}
-inline bool readReg32(ControlPlane::IDeviceTransport& tp, uint64_t offset, uint32_t& val) {
-    return tp.readReg32(offset, val);
-}
-inline bool writeReg32(ControlPlane::IDeviceTransport& tp, uint64_t offset, uint32_t val) {
-    return tp.writeReg32(offset, val);
-}
 }
 
 bool Rs422Device::open(const LinkConfig& cfg) {
@@ -73,7 +59,7 @@ bool Rs422Device::open(const LinkConfig& cfg) {
     }
 
     // 将 ICR 置 1，确保状态可读；其余寄存器配置由上层通过 ioctl 完成
-    (void)writeReg8(tp, ICR_reg, 1);
+    wr8(ICR_reg, 1);
 
     LOGI("rs422", "open", 0, "mtu=%u, regs=mmapped", getMTU());
     return true;
@@ -95,7 +81,7 @@ bool Rs422Device::send(const uint8_t* data, uint32_t len) {
 
     // 检查发送就绪
     uint32_t stu = 0;
-    if (!readReg32(tp, STU_reg, stu)) return false;
+    if (!rd32(STU_reg, stu)) return false;
     if ((stu & STU_TX_READY_MASK) != STU_TX_READY_MASK) {
         // 设备忙
         LOGW("rs422", "send", 0, "device busy, stu=0x%02x", stu);
@@ -112,7 +98,7 @@ bool Rs422Device::send(const uint8_t* data, uint32_t len) {
     if (sendlen >= 3) first4[3] = data[2];
     uint32_t word0 = 0;
     std::memcpy(&word0, first4, sizeof(word0));
-    if (!writeReg32(tp, SEND_BUF, word0)) return false;
+    if (!wr32(SEND_BUF, word0)) return false;
 
     // 写入余下数据：从 data[3] 开始，以 4 字节对齐写入到 SEND_BUF + 4, 8, ...
     uint32_t bram_offset = 4;
@@ -124,12 +110,12 @@ bool Rs422Device::send(const uint8_t* data, uint32_t len) {
             uint8_t b = (idx < sendlen) ? data[idx] : 0;
             w |= (static_cast<uint32_t>(b) << (8 * i));
         }
-        if (!writeReg32(tp, SEND_BUF + bram_offset, w)) return false;
+        if (!wr32(SEND_BUF + bram_offset, w)) return false;
         bram_offset += 4;
     }
 
     // 写入发送命令
-    if (!writeReg32(tp, CMD_reg, CMD_TX)) return false;
+    if (!wr32(CMD_reg, CMD_TX)) return false;
     return true;
 }
 
@@ -146,24 +132,24 @@ int32_t Rs422Device::receive(uint8_t* buf, uint32_t buf_size) {
 
     // 检查是否有数据
     uint32_t stu = 0, err = 0;
-    if (!readReg32(tp, STU_reg, stu)) return -1;
-    if (!readReg32(tp, ERR_reg, err)) return -1;
+    if (!rd32(STU_reg, stu)) return -1;
+    if (!rd32(ERR_reg, err)) return -1;
     if ((stu & STU_RX_READY_MASK) == 0) {
         // 无数据
         return 0;
     }
     if (err != 0) {
         // 设备返回错误，按 ILink 约定以负数表示错误
-        writeReg32(tp, ERR_reg, 1);
+        wr32(ERR_reg, 1);
         return -1;
     }
 
     // 触发接收命令，设备将接收缓冲区准备就绪
-    if (!writeReg32(tp, CMD_reg, CMD_RX)) return -1;
+    if (!wr32(CMD_reg, CMD_RX)) return -1;
 
     // 读取首 4 字节：长度 + 前 3 字节数据
     uint32_t word0 = 0;
-    if (!readReg32(tp, RECV_BUF, word0)) return -1;
+    if (!rd32(RECV_BUF, word0)) return -1;
     uint8_t first4[4];
     std::memcpy(first4, &word0, sizeof(word0));
     uint32_t reallen = first4[0];
@@ -180,7 +166,7 @@ int32_t Rs422Device::receive(uint8_t* buf, uint32_t buf_size) {
     uint32_t bram_offset = 4;
     while (produced < out_len) {
         uint32_t w = 0;
-        if (!readReg32(tp, RECV_BUF + bram_offset, w)) break;
+        if (!rd32(RECV_BUF + bram_offset, w)) break;
         uint8_t bytes[4];
         std::memcpy(bytes, &w, sizeof(w));
         // 按参考实现，将 4 字节写入到 buf[produced-1 ... produced+2]
@@ -219,7 +205,7 @@ int32_t Rs422Device::receive(uint8_t* buf, uint32_t buf_size, uint32_t timeout_u
     uint32_t waited = 0;
     while (waited <= timeout_us) {
         uint8_t stu = 0;
-        if (!readReg8(tp, STU_reg, stu)) return -1;
+        if (!rd8(STU_reg, stu)) return -1;
         if ((stu & STU_RX_READY_MASK) != 0) {
             return receive(buf, buf_size);
         }
@@ -248,20 +234,20 @@ int Rs422Device::ioctl(uint32_t opcode, const void* in, size_t in_len, void* out
         Config* cfg_out = reinterpret_cast<Config*>(out);
 
         // 配置中断宽度
-        if (!writeReg8(tp, EVT_reg, 125))  { return -EIO; } 
+        if (!wr8(EVT_reg, 125))  { return -EIO; } 
 
         // 参考 rs422_config 的寄存器写序，并在每次写后短暂延时
         // UCR: UART 控制；MCR: 模式控制；BRSR: 波特率；ICR: 状态控制
-        if (!writeReg8(tp, UCR_reg, cfg->ucr))  { return -EIO; } 
-        if (!writeReg8(tp, MCR_reg, cfg->mcr))  { return -EIO; } 
-        if (!writeReg8(tp, BRSR_reg, cfg->brsr)){ return -EIO; } 
-        if (!writeReg8(tp, ICR_reg, cfg->icr))  { return -EIO; } // 超时返回空闲状态
+        if (!wr8(UCR_reg, cfg->ucr))  { return -EIO; } 
+        if (!wr8(MCR_reg, cfg->mcr))  { return -EIO; } 
+        if (!wr8(BRSR_reg, cfg->brsr)){ return -EIO; } 
+        if (!wr8(ICR_reg, cfg->icr))  { return -EIO; } // 超时返回空闲状态
 
         // 发送/接收头两个字节（低/高字节）
-        if (!writeReg8(tp, THL_reg, cfg->tx_head_lo)) { return -EIO; } 
-        if (!writeReg8(tp, THH_reg, cfg->tx_head_hi)) { return -EIO; } 
-        if (!writeReg8(tp, RHL_reg, cfg->rx_head_lo)) { return -EIO; } 
-        if (!writeReg8(tp, RHH_reg, cfg->rx_head_hi)) { return -EIO; } 
+        if (!wr8(THL_reg, cfg->tx_head_lo)) { return -EIO; } 
+        if (!wr8(THH_reg, cfg->tx_head_hi)) { return -EIO; } 
+        if (!wr8(RHL_reg, cfg->rx_head_lo)) { return -EIO; } 
+        if (!wr8(RHH_reg, cfg->rx_head_hi)) { return -EIO; } 
 
         LOGI("rs422", "ioctl", opcode,
              "configured ucr=0x%02x mcr=0x%02x brsr=0x%02x icr=0x%02x tx_head=[0x%02x,0x%02x] rx_head=[0x%02x,0x%02x]",
@@ -270,8 +256,8 @@ int Rs422Device::ioctl(uint32_t opcode, const void* in, size_t in_len, void* out
 
         // 回读
         uint32_t ret1, ret2;
-        if (!readReg32(tp, UCR_reg, ret1)) { return -EIO; } 
-        if (!readReg32(tp, THL_reg, ret2)) { return -EIO; } 
+        if (!rd32(UCR_reg, ret1)) { return -EIO; } 
+        if (!rd32(THL_reg, ret2)) { return -EIO; } 
 
         // 读取
         if (out != nullptr && out_len >= sizeof(Config)) {

@@ -110,7 +110,6 @@ bool UdpLink::send(const uint8_t* data, uint32_t len) {
     if (sock_fd_ < 0 || status_ != LinkStatus::OPEN) return false;
     const sockaddr* to = nullptr;
     socklen_t tolen = 0;
-    SockAddr tmp{};
     if (remote_.has_value()) {
         to = reinterpret_cast<const sockaddr*>(&remote_->ss);
         tolen = remote_->len;

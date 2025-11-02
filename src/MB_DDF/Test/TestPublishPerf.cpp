@@ -73,7 +73,6 @@ int main() {
 
     // 接收-发布测试
     const size_t payload_size = 61357;
-    const uint32_t wait_usec = 10;
     std::vector<uint8_t> payload(payload_size, 0xAB);
     std::vector<uint8_t> recv_buf(payload_size, 0);
 
@@ -81,7 +80,7 @@ int main() {
     std::string test1 = "Classic publish latency test";
     tr_delay = total_delay = 0;
     LOG_TITLE(test1);
-    for (int i=0; i<num_messages; i++) {
+    for (uint32_t i=0; i<num_messages; i++) {
         if ((i+1) % (num_messages / 50) == 0) {
             LOG_PROGRESS(test1, (i+1) * 100 / num_messages);
         }
@@ -112,7 +111,7 @@ int main() {
     std::string test2 = "Zero-copy publish latency test";
     tr_delay = total_delay = 0;
     LOG_TITLE(test2);
-    for (int i=0; i<num_messages; i++) {
+    for (uint32_t i=0; i<num_messages; i++) {
         if ((i+1) % (num_messages / 50) == 0) {
             LOG_PROGRESS(test2, (i+1) * 100 / num_messages);
         }
