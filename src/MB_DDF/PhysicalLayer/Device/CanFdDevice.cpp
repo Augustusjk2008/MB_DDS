@@ -3,7 +3,6 @@
  */
 #include "MB_DDF/PhysicalLayer/Device/CanFdDevice.h"
 #include "MB_DDF/PhysicalLayer/Support/Log.h"
-#include "MB_DDF/PhysicalLayer/Hardware/pl_canfd.h"
 #include <cstring>
 #include <unistd.h>
 
@@ -80,6 +79,13 @@ bool CanFDDevice::send(CanFrame& frame) {
 int32_t CanFDDevice::receive(CanFrame& frame) {
     // 使用硬件接收方法
     return __axiCanfdRecvFifo(&frame);
+}
+
+int32_t CanFDDevice::receive(CanFrame& frame, uint32_t timeout_us) {
+    uint32_t bm = 0;
+    int ev = transport().waitEvent(&bm, timeout_us / 1000);
+    if (ev <= 0) return ev == 0 ? 0 : -1;
+    return receive(frame);
 }
 
 bool CanFDDevice::send(const uint8_t* data, uint32_t len) {

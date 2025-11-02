@@ -16,6 +16,7 @@
 #include "MB_DDF/Debug/Logger.h"
 #include "MB_DDF/Debug/LoggerExtensions.h"
 #include "MB_DDF/PhysicalLayer/DataPlane/UdpLink.h"
+#include "MB_DDF/PhysicalLayer/Device/CanFdDevice.h"
 #include "MB_DDF/PhysicalLayer/Device/Rs422Device.h"
 #include "MB_DDF/PhysicalLayer/Device/HelmDevice.h"
 #include "MB_DDF/PhysicalLayer/ControlPlane/XdmaTransport.h"
@@ -282,6 +283,48 @@ void test_helm_transport() {
     cleanup_device(helm, tp_helm);
 }
 
+// 测试 CANFD 设备
+void test_canfd_transport() {   
+    LOG_TITLE("CANFD Transport Test");
+
+    ControlPlane::XdmaTransport canfd;
+    TransportConfig cfg_canfd;
+    cfg_canfd.device_offset = 0x50000;
+    cfg_canfd.event_number = 5;
+    canfd.open(cfg_canfd);
+
+    Device::CanFDDevice canfd_dev(canfd, 64);
+    LinkConfig cfg_link; 
+    cfg_link.mtu = 64;
+    canfd_dev.open(cfg_link);
+
+    // 简单测试：收一帧，然后发一帧
+    Device::CanFrame tx_frame = {
+        .id = 0x123,
+        .ide = false,
+        .rtr = false,
+        .fdf = true,
+        .brs = true,
+        .len = 8,
+        .data = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07},
+    };
+    Device::CanFrame rx_frame;
+    for (uint32_t i=0; i<10; i++) {
+        LOG_INFO << "Test " << i << "th frame, waiting for 1s.";
+        int rx_len = canfd_dev.receive(rx_frame, 1000000);
+        if (rx_len <= 0) {
+            LOG_ERROR << "receive() failed or timed out. ret=" << rx_len;
+            continue;
+        } else {
+            LOG_INFO << "Received frame id: " << rx_frame.id << " len: " << rx_frame.len;
+        }
+        canfd_dev.send(tx_frame);
+    }
+
+    // 释放
+    cleanup_device(canfd_dev, canfd);
+}
+
 // 测试 DMA-DDR 接口
 void test_ddr_transport() {   
     LOG_TITLE("DDR Transport Test");
@@ -408,6 +451,7 @@ int main() {
     test_rs422_device();
     test_helm_transport();
     test_ddr_transport();
+    test_canfd_transport();
 
     LOG_DOUBLE_SEPARATOR();
     LOG_TITLE("Physical Layer Test Suite Finished");

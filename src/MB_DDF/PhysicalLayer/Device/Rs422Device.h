@@ -15,7 +15,7 @@ class Rs422Device : public MB_DDF::PhysicalLayer::Device::TransportLinkAdapter {
 public:
     // DMA 通道与事件均按 0 配置；MTU 可由上层配置传入
     explicit Rs422Device(MB_DDF::PhysicalLayer::ControlPlane::IDeviceTransport& tp, uint16_t mtu)
-        : TransportLinkAdapter(tp, mtu, /*h2c*/-1, /*c2h*/-1) {}
+        : TransportLinkAdapter(tp, mtu) {}
 
     // ioctl 操作码：设备配置（参考 rs422_config）
     static constexpr uint32_t IOCTL_CONFIG = 0x01;

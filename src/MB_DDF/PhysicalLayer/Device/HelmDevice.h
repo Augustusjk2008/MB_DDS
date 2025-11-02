@@ -18,7 +18,7 @@ class HelmDevice : public MB_DDF::PhysicalLayer::Device::TransportLinkAdapter {
 public:
     // DMA 通道不使用；MTU 可由上层配置传入（建议 >= 16 以容纳 4 路 PWM）
     explicit HelmDevice(MB_DDF::PhysicalLayer::ControlPlane::IDeviceTransport& tp, uint16_t mtu)
-        : TransportLinkAdapter(tp, mtu, /*h2c*/-1, /*c2h*/-1) {}
+        : TransportLinkAdapter(tp, mtu) {}
 
     // ioctl 操作码（保持与 reference/axi 驱动一致，便于上层统一语义）
     static constexpr uint32_t IOCTL_FDB  = 0x9077; // 舵机 AD 反馈读取
@@ -36,7 +36,7 @@ public:
     bool close() override;
 
     // send: 实现 ioctlPwm —— 将 4 路 32 位占空比写入寄存器
-    bool    send(const uint8_t* data, uint32_t len) override;
+    bool send(const uint8_t* data, uint32_t len) override;
 
     // receive: 实现 ioctlFdb —— 读取 4 路 16 位 AD 反馈并按小端序写入 buf
     int32_t receive(uint8_t* buf, uint32_t buf_size) override;

@@ -30,11 +30,8 @@ struct CanFrame {
 
 class CanFDDevice : public TransportLinkAdapter {
 public:
-    explicit CanFDDevice(MB_DDF::PhysicalLayer::ControlPlane::IDeviceTransport& tp,
-                         uint16_t mtu,
-                         int h2c_ch = -1,
-                         int c2h_ch = -1)
-        : TransportLinkAdapter(tp, mtu, h2c_ch, c2h_ch) {}
+    explicit CanFDDevice(MB_DDF::PhysicalLayer::ControlPlane::IDeviceTransport& tp, uint16_t mtu)
+        : TransportLinkAdapter(tp, mtu) {}
 
     // 设备初始化：复位 -> 配置模式 -> 设定 RX FIFO 水位/过滤 -> 进入正常模式
     bool open(const LinkConfig& cfg) override;
@@ -48,6 +45,7 @@ public:
     // 发送接收帧语义实现
     bool send(CanFrame& frame);
     int32_t receive(CanFrame& frame);
+    int32_t receive(CanFrame& frame, uint32_t timeout_us);
 
     // 设备控制：配置参数、查询状态
     int ioctl(uint32_t opcode, const void* in, size_t in_len, void* out, size_t out_len) override;
@@ -56,9 +54,6 @@ private:
     // DLC 到字节长度映射（支持 CAN/CANFD 常用编码）
     static uint8_t dlc_to_len(uint8_t dlc);
     static uint8_t len_to_dlc(uint8_t len);
-
-    // 触发发送：将任意可用 TX 缓冲标记为准备好（简化为全掩码）
-    bool trigger_transmit();
 
     // 下面为真实 CANFD 硬件操作
     // 返回可用发送缓冲区索引
