@@ -166,6 +166,78 @@ if(BUILD_LIBS)
         message(STATUS "liburing not found; io_uring async support disabled")
     endif()
 
+    # 查找 FTXUI 库：支持本机和交叉编译
+    if(CROSS_COMPILE)
+        # 交叉编译环境下的 FTXUI 路径
+        set(FTXUI_ROOT_PATH "/opt/wanghuo/v2.0.0-rc4/sysroots/armv8a-ucas-linux/usr/local")
+        find_path(FTXUI_INCLUDE_DIR 
+            NAMES ftxui/component/component.hpp
+            PATHS "${FTXUI_ROOT_PATH}/include"
+            NO_DEFAULT_PATH
+            NO_CMAKE_FIND_ROOT_PATH
+        )
+        find_library(FTXUI_SCREEN_LIBRARY 
+            NAMES ftxui-screen
+            PATHS "${FTXUI_ROOT_PATH}/lib"
+            NO_DEFAULT_PATH
+            NO_CMAKE_FIND_ROOT_PATH
+        )
+        find_library(FTXUI_DOM_LIBRARY 
+            NAMES ftxui-dom
+            PATHS "${FTXUI_ROOT_PATH}/lib"
+            NO_DEFAULT_PATH
+            NO_CMAKE_FIND_ROOT_PATH
+        )
+        find_library(FTXUI_COMPONENT_LIBRARY 
+            NAMES ftxui-component
+            PATHS "${FTXUI_ROOT_PATH}/lib"
+            NO_DEFAULT_PATH
+            NO_CMAKE_FIND_ROOT_PATH
+        )
+        # 尝试使用 CMake 配置文件
+        find_package(ftxui QUIET PATHS "${FTXUI_ROOT_PATH}/lib/cmake/ftxui" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+    else()
+        # 本机环境下的 FTXUI 路径
+        set(FTXUI_ROOT_PATH "/usr/local")
+        find_path(FTXUI_INCLUDE_DIR 
+            NAMES ftxui/component/component.hpp
+            PATHS "${FTXUI_ROOT_PATH}/include"
+            NO_DEFAULT_PATH
+        )
+        find_library(FTXUI_SCREEN_LIBRARY 
+            NAMES ftxui-screen
+            PATHS "${FTXUI_ROOT_PATH}/lib"
+            NO_DEFAULT_PATH
+        )
+        find_library(FTXUI_DOM_LIBRARY 
+            NAMES ftxui-dom
+            PATHS "${FTXUI_ROOT_PATH}/lib"
+            NO_DEFAULT_PATH
+        )
+        find_library(FTXUI_COMPONENT_LIBRARY 
+            NAMES ftxui-component
+            PATHS "${FTXUI_ROOT_PATH}/lib"
+            NO_DEFAULT_PATH
+        )
+        # 尝试使用 CMake 配置文件
+        find_package(ftxui QUIET PATHS "${FTXUI_ROOT_PATH}/lib/cmake/ftxui" NO_DEFAULT_PATH)
+    endif()
+
+    # 检查 FTXUI 是否找到
+    if(FTXUI_INCLUDE_DIR AND FTXUI_SCREEN_LIBRARY AND FTXUI_DOM_LIBRARY AND FTXUI_COMPONENT_LIBRARY)
+        set(FTXUI_FOUND TRUE)
+        set(FTXUI_LIBRARIES ${FTXUI_COMPONENT_LIBRARY} ${FTXUI_DOM_LIBRARY} ${FTXUI_SCREEN_LIBRARY})
+        message(STATUS "FTXUI found:")
+        message(STATUS "  Include dir: ${FTXUI_INCLUDE_DIR}")
+        message(STATUS "  Libraries: ${FTXUI_LIBRARIES}")
+    elseif(ftxui_FOUND)
+        set(FTXUI_FOUND TRUE)
+        message(STATUS "FTXUI found via CMake config")
+    else()
+        set(FTXUI_FOUND FALSE)
+        message(STATUS "FTXUI not found; TestWithUI will be skipped")
+    endif()
+
     foreach(TGT IN ITEMS MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TIMER)
         target_include_directories(${TGT} PUBLIC
             ${CMAKE_CURRENT_SOURCE_DIR}
@@ -181,13 +253,43 @@ if(BUILD_TESTS)
         "src/MB_DDF/Test/Test*.cpp"
     )
 
+    # 用于跟踪实际创建的测试目标
+    set(CREATED_TEST_TARGETS "")
+
     foreach(TEST_SOURCE ${TEST_SOURCES})
         get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
+        
+        # 特殊处理 TestWithUI：需要 FTXUI 库
+        if(TEST_NAME STREQUAL "TestWithUI")
+            if(NOT FTXUI_FOUND)
+                message(STATUS "Skipping ${TEST_NAME}: FTXUI not found")
+                continue()
+            endif()
+        endif()
+        
         add_executable(${TEST_NAME} ${TEST_SOURCE})
+        list(APPEND CREATED_TEST_TARGETS ${TEST_NAME})
+        
         target_include_directories(${TEST_NAME} PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/src
         )
+
+        # 为 TestWithUI 添加 FTXUI 支持
+        if(TEST_NAME STREQUAL "TestWithUI" AND FTXUI_FOUND)
+            if(ftxui_FOUND)
+                # 使用 CMake 配置的 FTXUI
+                target_link_libraries(${TEST_NAME} PRIVATE 
+                    ftxui::screen
+                    ftxui::dom  
+                    ftxui::component
+                )
+            else()
+                # 使用手动查找的 FTXUI
+                target_include_directories(${TEST_NAME} PRIVATE ${FTXUI_INCLUDE_DIR})
+                target_link_libraries(${TEST_NAME} PRIVATE ${FTXUI_LIBRARIES})
+            endif()
+        endif()
 
         if(BUILD_LIBS)
             if(TEST_NAME STREQUAL "TestMonitor")
@@ -198,6 +300,9 @@ if(BUILD_TESTS)
                 target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_PHYSICAL MB_DDF_CORE MB_DDF_TIMER)
             elseif(TEST_NAME STREQUAL "TestRealTime")
                 target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TIMER)
+            elseif(TEST_NAME STREQUAL "TestWithUI")
+                # TestWithUI 只需要基础库，不需要物理层
+                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_TIMER)
             else()
                 target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_TIMER)
             endif()
@@ -262,8 +367,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     endif()
     
     if(BUILD_TESTS)
-        foreach(TEST_SOURCE ${TEST_SOURCES})
-            get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
+        foreach(TEST_NAME ${CREATED_TEST_TARGETS})
             target_compile_options(${TEST_NAME} PRIVATE ${DEBUG_COMPILE_OPTIONS})
         endforeach()
     endif()
@@ -298,8 +402,7 @@ else()
     endif()
     
     if(BUILD_TESTS)
-        foreach(TEST_SOURCE ${TEST_SOURCES})
-            get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
+        foreach(TEST_NAME ${CREATED_TEST_TARGETS})
             target_compile_options(${TEST_NAME} PRIVATE ${RELEASE_COMPILE_OPTIONS})
         endforeach()
     endif()
@@ -320,8 +423,7 @@ else()
     endif()
     
     if(BUILD_TESTS AND LTO_OPTIONS)
-        foreach(TEST_SOURCE ${TEST_SOURCES})
-            get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
+        foreach(TEST_NAME ${CREATED_TEST_TARGETS})
             target_compile_options(${TEST_NAME} PRIVATE ${LTO_OPTIONS})
         endforeach()
     endif()
@@ -329,8 +431,7 @@ endif()
 
 # 安装规则 - 安装所有Test程序（条件编译）
 if(BUILD_TESTS)
-    foreach(TEST_SOURCE ${TEST_SOURCES})
-        get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
+    foreach(TEST_NAME ${CREATED_TEST_TARGETS})
         install(TARGETS ${TEST_NAME}
             DESTINATION bin
         )

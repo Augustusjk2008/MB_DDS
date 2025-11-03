@@ -236,7 +236,8 @@ int CanFDDevice::__axiCanfdEnterMode(uint8_t ucMode) {
     // 如果不是上述两种模式，则在设置模式之前必须切换到配置模式，再进行模式切换
     wr32(XCANFD_SRR_OFFSET, 0);
     if (__axiCanfdGetMode() != (uint8_t)XCANFD_MODE_CONFIG) {   // 判断是否进入配置模式
-        return  0;
+        LOGE("canfd", "enter Mode error", XCANFD_MODE_CONFIG, "not in config mode");
+        return -1;
     }
 
     switch (ucMode) {
@@ -248,6 +249,10 @@ int CanFDDevice::__axiCanfdEnterMode(uint8_t ucMode) {
         break;
     case XCANFD_MODE_NORMAL:                                            // 切换正常模式
         wr32(XCANFD_MSR_OFFSET, uiMsrReg);
+        wr32(XCANFD_SRR_OFFSET, XCANFD_SRR_CEN_MASK);
+        break;
+    case XCANFD_MODE_LOOPBACK:                                          // 切换回环模式
+        wr32(XCANFD_MSR_OFFSET, (XCANFD_MSR_LBACK_MASK | uiMsrReg));
         wr32(XCANFD_SRR_OFFSET, XCANFD_SRR_CEN_MASK);
         break;
         // 下面的模式配置方式来自于Linux源码
@@ -271,7 +276,6 @@ int CanFDDevice::__axiCanfdEnterMode(uint8_t ucMode) {
         wr32(XCANFD_SRR_OFFSET, XCANFD_SRR_CEN_MASK);
         break;
     }
-
     return 0;
 }
 
@@ -649,7 +653,7 @@ int CanFDDevice::__axiCanfdIoctl(int iCmd, void* lArg) {
             break;
         }
 
-        case CAN_DEV_SET_FLITER: {                                         // 设置过滤模式
+        case CAN_DEV_SET_FILTER: {                                         // 设置过滤模式
             if (lArg) {
                 AXI_CANFD_FILTER* pAxiCanFilter = (AXI_CANFD_FILTER *)lArg;
                 __axiCanfdSetFilter(pAxiCanFilter->uiFilterIndex,

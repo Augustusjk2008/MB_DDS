@@ -17,6 +17,7 @@
 #include "MB_DDF/Debug/LoggerExtensions.h"
 #include "MB_DDF/PhysicalLayer/DataPlane/UdpLink.h"
 #include "MB_DDF/PhysicalLayer/Device/CanFdDevice.h"
+#include "MB_DDF/PhysicalLayer/Hardware/pl_canfd.h"
 #include "MB_DDF/PhysicalLayer/Device/Rs422Device.h"
 #include "MB_DDF/PhysicalLayer/Device/HelmDevice.h"
 #include "MB_DDF/PhysicalLayer/ControlPlane/XdmaTransport.h"
@@ -298,6 +299,23 @@ void test_canfd_transport() {
     cfg_link.mtu = 64;
     canfd_dev.open(cfg_link);
 
+    uint32_t baud_Prescaler = 1000000;
+    uint32_t baud_Data = 4000000;
+    // 设置不滤波 - 接收所有CAN帧
+    Device::AXI_CANFD_FILTER no_filter = {
+        .uiFilterIndex = 1,  // 使用滤波器索引1
+        .uiMask = 0xFFFFFFFF,  // 表示所有位都不关心
+        .uiId = 0xFFFFFFFF    // ID 为 0xFFFFFFFF 表示接收所有 ID
+    };
+    canfd_dev.ioctl(CAN_DEV_SET_BAUD, &baud_Prescaler);
+    canfd_dev.ioctl(CAN_DEV_SET_DATA_BAUD, &baud_Data);
+    // canfd_dev.ioctl(CAN_DEV_SET_FILTER, &no_filter);
+
+    canfd_dev.__axiCanfdEnterMode(4);
+    sleep(1);
+    uint32_t mode = canfd_dev.__axiCanfdGetMode();
+    LOG_INFO << "CANFD mode is: " << mode;
+
     // 简单测试：收一帧，然后发一帧
     Device::CanFrame tx_frame = {
         .id = 0x123,
@@ -313,8 +331,8 @@ void test_canfd_transport() {
         LOG_INFO << "Test " << i << "th frame, waiting for 1s.";
         int rx_len = canfd_dev.receive(rx_frame, 1000000);
         if (rx_len <= 0) {
+            rx_len = canfd_dev.receive(rx_frame);
             LOG_ERROR << "receive() failed or timed out. ret=" << rx_len;
-            continue;
         } else {
             LOG_INFO << "Received frame id: " << rx_frame.id << " len: " << rx_frame.len;
         }

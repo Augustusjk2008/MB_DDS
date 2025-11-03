@@ -48,9 +48,9 @@ public:
     int32_t receive(CanFrame& frame, uint32_t timeout_us);
 
     // 设备控制：配置参数、查询状态
-    int ioctl(uint32_t opcode, const void* in, size_t in_len, void* out, size_t out_len) override;
+    int ioctl(uint32_t opcode, const void* in = nullptr, size_t in_len = 0, void* out = nullptr, size_t out_len = 0) override;
 
-private:
+// private:
     // DLC 到字节长度映射（支持 CAN/CANFD 常用编码）
     static uint8_t dlc_to_len(uint8_t dlc);
     static uint8_t len_to_dlc(uint8_t len);

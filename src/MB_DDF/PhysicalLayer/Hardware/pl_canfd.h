@@ -646,7 +646,7 @@ namespace Device {
 #define CAN_DEV_GET_BUS_STATE           203              /*  获取 CAN 控制器状态         */
 #define CAN_DEV_REST_CONTROLLER         205              /*  复位 CAN 控制器             */
 #define CAN_DEV_SET_BAUD                206              /*  设置 CAN 波特率             */
-#define CAN_DEV_SET_FLITER              207              /*  设置 CAN 滤波器 (暂不支持)  */
+#define CAN_DEV_SET_FILTER              207              /*  设置 CAN 滤波器 (暂不支持)  */
 #define CAN_DEV_STARTUP                 208              /*  启动 CAN 控制器             */
 #define CAN_DEV_SET_MODE                209              /*  0: BASIC CAN 1: PELI CAN    */
 #define CAN_DEV_LISTEN_ONLY             210              /*  设置只听模式                */
