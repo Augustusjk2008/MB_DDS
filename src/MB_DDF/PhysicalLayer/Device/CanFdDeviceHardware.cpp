@@ -406,6 +406,7 @@ int CanFDDevice::__axiCanfdIrqHandel() {
 // CanFD发送
 int CanFDDevice::__axiCanfdSend(CanFrame *pCanFrame) {
     if (pCanFrame == nullptr) {
+        LOGW("canfd", "send", -1, "pCanFrame is nullptr");
         return -1;
     }
     
@@ -452,6 +453,8 @@ int CanFDDevice::__axiCanfdSend(CanFrame *pCanFrame) {
     if (uiFreeTxBuffer == 33) {
         LOGW("canfd", "send", -1, "tx fifo fill");
         return -1;
+    } else {
+        LOGI("canfd", "send", uiTrrVal, "uiFreeTxBuffer: %d", uiFreeTxBuffer);
     }
 
     // 将ID值和DLC值写入相应的寄存器
@@ -479,6 +482,7 @@ int CanFDDevice::__axiCanfdSend(CanFrame *pCanFrame) {
 // CanFD接收（FIFO模式）
 int CanFDDevice::__axiCanfdRecvFifo(CanFrame *pCanFrame) {
     if (pCanFrame == nullptr) {
+        LOGE("canfd", "recv", -1, "pCanFrame is nullptr");
         return -1;
     }
     uint32_t uiResult    = 0;
@@ -659,6 +663,8 @@ int CanFDDevice::__axiCanfdIoctl(int iCmd, void* lArg) {
                 __axiCanfdSetFilter(pAxiCanFilter->uiFilterIndex,
                                     pAxiCanFilter->uiMask,
                                     pAxiCanFilter->uiId);
+            } else {
+                __axiCanfdAcceptFilterDisable(0);
             }
             break;
         }
