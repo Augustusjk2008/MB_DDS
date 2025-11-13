@@ -95,7 +95,7 @@ cmake --build . --parallel $(nproc)
 cmake --build . --target info
 ```
 
-交叉编译（手动）：
+### 交叉编译（手动）：
 
 ```bash
 source /opt/wanghuo/v2.0.0-rc4/environment-setup-armv8a-ucas-linux

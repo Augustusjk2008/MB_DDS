@@ -130,11 +130,11 @@ int CanDevice::ioctl(uint32_t opcode, const void* in, size_t in_len, void* out, 
             // 则 (BRP+1) = 24 / (baud_Mbps * 12)
             // 1M -> BRP=1；500K -> BRP=3；250K -> BRP=7
             if (baud == 1000000) {
-                bt.prescaler = 1; bt.ts1 = 7; bt.ts2 = 2; bt.sjw = 0;
+                bt.prescaler = 0; bt.ts1 = 15; bt.ts2 = 6; bt.sjw = 3;
             } else if (baud == 500000) {
-                bt.prescaler = 3; bt.ts1 = 7; bt.ts2 = 2; bt.sjw = 0;
+                bt.prescaler = 1; bt.ts1 = 15; bt.ts2 = 6; bt.sjw = 3;
             } else if (baud == 250000) {
-                bt.prescaler = 7; bt.ts1 = 7; bt.ts2 = 2; bt.sjw = 0;
+                bt.prescaler = 3; bt.ts1 = 15; bt.ts2 = 6; bt.sjw = 3;
             } else {
                 LOGE("can", "ioctl", -EINVAL, "unsupported baud=%u (only 1M/500K/250K @24MHz)", baud);
                 return -EINVAL;
@@ -180,16 +180,10 @@ bool CanDevice::__set_bit_timing(const BitTiming& bt) {
     if (!wr32(XCAN_BRPR_OFFSET, bt.prescaler & 0xFF)) return false;
     usleep(100);
     // BTR：对齐测试用例的寄存器编码（docs/can/can.md 示例值）
-    // 在 24MHz/1Mbps 情况下已验证的常量：0x000001C7（TS1=7、TS2=2、SJW=0）
-    uint32_t btr = 0;
-    if (bt.prescaler == 1 && bt.ts1 == 7 && bt.ts2 == 2 && bt.sjw == 0) {
-        btr = 0x000001C7;
-    } else {
-        // 回退到原始组合（某些平台兼容），但优先上述常量
-        btr = (static_cast<uint32_t>(bt.sjw) << 16)
-            | (static_cast<uint32_t>(bt.ts2) << 8)
-            | (static_cast<uint32_t>(bt.ts1) & 0xFF);
-    }
+    uint32_t btr = (static_cast<uint32_t>(bt.sjw) << 7)
+        | (static_cast<uint32_t>(bt.ts2) << 4)
+        | (static_cast<uint32_t>(bt.ts1) & 0xFF);
+    LOGI("can", "set_bit_timing", 0, "btr=0x%08x", btr);
     if (!wr32(XCAN_BTR_OFFSET, btr)) return false;
     usleep(100);
     return true;

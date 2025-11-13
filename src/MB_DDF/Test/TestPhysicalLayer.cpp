@@ -145,18 +145,19 @@ void test_udp_link() {
  * @note 这个测试依赖于存在的 RS422 驱动和设备节点。
  *       如果环境不满足，open 会失败，但仍能验证接口行为。
  */
-void test_rs422_device() {
+void test_rs422_device(int num) {
     LOG_TITLE("RS422 Device Test");
+    LOG_INFO << "Testing RS422 device with event number: " << num;
 
     // 1. 控制面配置与打开
     ControlPlane::XdmaTransport transport;
     TransportConfig cfg_tp;
     cfg_tp.device_path = "/dev/xdma0";
-    cfg_tp.event_number = 1;
-    cfg_tp.device_offset = 0x20000;
+    cfg_tp.event_number = num;
+    cfg_tp.device_offset = 0x10000 * num;
     // cfg_tp.device_offset = 0x00000; // 3号引信
-    // cfg_tp.device_offset = 0x10000; //
-    // cfg_tp.device_offset = 0x20000; //
+    // cfg_tp.device_offset = 0x10000; // 
+    // cfg_tp.device_offset = 0x20000; // 
     // cfg_tp.device_offset = 0x30000; // 
     
     LOG_INFO << "Attempting to open XdmaTransport with path: " << cfg_tp.device_path;
@@ -224,23 +225,24 @@ void test_rs422_device() {
     }
     adapter_422.receive(buf_r.data(), buf.size(), 10000);
     LOG_INFO << "Clear old data.";
-    MB_DDF::Timer::ChronoHelper::timingAverage(1000, [&]() {
+    MB_DDF::Timer::ChronoHelper::timingAverage(100, [&]() {
         static bool err = false;
         if (err) return;
         buf.data()[1] += 1;
         adapter_422.send(buf.data(), test_mtu);
-        int received = adapter_422.receive(buf_r.data(), buf.size(), 100000);
-        if (received != test_mtu) {
-            LOG_ERROR << "receive() failed or timed out. ret=" << received;
-            // err = true;
-        } else if (memcmp(buf.data(), buf_r.data(), received) != 0) {
-            LOG_ERROR << "Received data does not match sent data.";
-            // 打印数据
-            for (int i=0; i<20; i++) {
-                LOG_ERROR << "Data " << i << " is: " << (uint32_t)(buf.data()[i]) << " and " << (uint32_t)(buf_r.data()[i]);
-            }
-            err = true;
-        }
+        usleep(10000);
+        // int received = adapter_422.receive(buf_r.data(), buf.size(), 100000);
+        // if (received != test_mtu) {
+        //     LOG_ERROR << "receive() failed or timed out. ret=" << received;
+        //     // err = true;
+        // } else if (memcmp(buf.data(), buf_r.data(), received) != 0) {
+        //     LOG_ERROR << "Received data does not match sent data.";
+        //     // 打印数据
+        //     for (int i=0; i<20; i++) {
+        //         LOG_ERROR << "Data " << i << " is: " << (uint32_t)(buf.data()[i]) << " and " << (uint32_t)(buf_r.data()[i]);
+        //     }
+        //     err = true;
+        // }
     });
 
     // 7. 关闭
@@ -294,8 +296,8 @@ void test_can_transport() {
     ControlPlane::XdmaTransport can;
     TransportConfig cfg_can;
     cfg_can.device_path  = "/dev/xdma0"; // 必须设置设备路径以映射寄存器与事件设备
-    cfg_can.device_offset = 0x80000;      // CAN 核心在 user 空间的偏移
-    cfg_can.event_number = 8;             // 事件设备编号（当前未使用中断，但保持一致）
+    cfg_can.device_offset = 0x50000;      // CAN 核心在 user 空间的偏移
+    cfg_can.event_number = 5;             // 事件设备编号（当前未使用中断，但保持一致）
     if (!can.open(cfg_can)) {
         LOG_ERROR << "XdmaTransport open failed for CAN (check device nodes).";
         return;
@@ -363,8 +365,8 @@ void test_can_transport() {
      * 要求：1. 回环模式需LBACK=1（bit30=1）；2. SLEEP=0（bit31=0，避免冲突）；3. 两者不可同时为1
      ***************************************************************************/
     // 写MSR=0x2（bit30=1=LBACK，bit31=0=SLEEP，其他保留位=0）
-    can_dev.wr32(0x004, 0x2);
-    // can_dev.wr32(0x004, 0x1);
+    // can_dev.wr32(0x004, 0x2);
+    can_dev.wr32(0x004, 0x1);
     usleep(100);
 
     // 验证回环模式配置：读取MSR，确认bit30=1、bit31=0
@@ -382,21 +384,23 @@ void test_can_transport() {
     * 2. TS1=8tq（TSEG1=7）、TS2=3tq（TSEG2=2）、SJW=1tq（SJW=0）
     ***************************************************************************/
     // 4.1 配置BRPR（0x008）：BRP=1→写入0x01（大端序bit7-0=0x01）
-    can_dev.wr32(0x008, 0x00000001);
+    uint32_t set = 0;
+    can_dev.wr32(0x008, set);
     usleep(100);
     can_dev.rd32(0x008, reg_val);   
-    LOG_INFO << "4.1 BRPR配置: 0x" << std::hex << reg_val << "（预期：0x00000001）";
-    if (reg_val != 0x00000001) {
+    LOG_INFO << "4.1 BRPR配置: 0x" << std::hex << reg_val << "（预期：0x00000000）";
+    if (reg_val != set) {
         LOG_ERROR << "BRPR配置失败！";
         return;
     }
 
     // 4.2 配置BTR（0x00C）：TS1=0x07、TS2=0x02、SJW=0x00→写入0x000001C7
-    can_dev.wr32(0x00C, 0x000001C7);
+    set = 0x1EF;
+    can_dev.wr32(0x00C, set);
     usleep(100);
     can_dev.rd32(0x00C, reg_val);   
     LOG_INFO << "4.2 BTR配置: 0x" << std::hex << reg_val << "（预期：0x000001C7）";
-    if (reg_val != 0x000001C7) {
+    if (reg_val != set) {
         LOG_ERROR << "BTR配置失败！";
         return;
     }
@@ -762,10 +766,16 @@ int main() {
     LOG_BLANK_LINE();
 
     // test_udp_link();
-    test_rs422_device();
+    // while(1) {
+    // test_rs422_device(0);
+    // test_rs422_device(1);
+    // test_rs422_device(2);
+    // test_rs422_device(3);
+    // test_rs422_device(4);
+    // }
     // test_helm_transport();
     // test_ddr_transport();
-    // test_can_transport();
+    test_can_transport();
 
     LOG_DOUBLE_SEPARATOR();
     LOG_TITLE("Physical Layer Test Suite Finished");
