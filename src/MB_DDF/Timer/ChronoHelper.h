@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <string>
+#include <vector>
 #include <deque>
 #include <iostream>
 #include <iomanip>
@@ -190,13 +191,12 @@ private:
 
     // ========== 区间统计相关成员 ==========
     struct Stats {
-        Clock::time_point last_call_time{};
-        long long max_positive = 0;
-        long long max_negative = 0;
-        long long total_dev = 0;
-        int count = 0;
-        std::deque<std::pair<Clock::time_point, long long>> recent_intervals;
+        std::deque<std::pair<Clock::time_point, long long>> recent_intervals; // 用于计算平均间隔
+        Clock::time_point last_call_time;
+        std::vector<long long> jitters;        // 存储抖动绝对值
+        long long max_jitter = 0;              // 最大抖动
     };
+
     static std::unordered_map<int, Stats> stats_map;
     static std::unordered_map<int, long long> expected_interval_map;
     static long long REPORT_INTERVAL;
@@ -209,6 +209,7 @@ private:
     static void report_all(const Clock::time_point& now);
     static long long calculate_average_interval(Stats& s);
     static void clean_old_intervals(Stats& s, const Clock::time_point& now);
+    static long long calculate_percentile(const std::vector<long long>& sorted_jitters, double percentile);
 };
 
 }   // namespace Timer

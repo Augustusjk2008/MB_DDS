@@ -19,13 +19,13 @@ void helm_callback(void* para) {
 }
 
 void cml_callback(void* para) {
-    static const size_t DATA_SIZE = 64 * 1024;
+    static const size_t DATA_SIZE = 640 * 1024;
     static std::vector<uint8_t> data(DATA_SIZE);
 
     auto cml = (MB_DDF::PhysicalLayer::ControlPlane::XdmaTransport*)para;
     cml->continuousReadAsync(0, data.data(), DATA_SIZE, 0);
 
-    ChronoHelper::record(1);
+    // ChronoHelper::record(1);
 }
 
 // 测试主函数，设置实时定时器

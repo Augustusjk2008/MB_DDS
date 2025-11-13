@@ -10,6 +10,8 @@
 #include <iostream>
 #include <algorithm>
 #include <sstream>
+#include <vector>
+#include <cmath>
 
 namespace MB_DDF {
 namespace Timer {
@@ -59,31 +61,79 @@ void ChronoHelper::clean_old_intervals(Stats& s, const Clock::time_point& now) {
     }
 }
 
+// 计算百分位数
+long long ChronoHelper::calculate_percentile(const std::vector<long long>& sorted_jitters, double percentile) {
+    if (sorted_jitters.empty()) return 0;
+    
+    if (percentile <= 0.0) return sorted_jitters.front();
+    if (percentile >= 1.0) return sorted_jitters.back();
+    
+    // 使用线性插值方法计算百分位数
+    double position = percentile * (sorted_jitters.size() - 1);
+    size_t lower_index = static_cast<size_t>(std::floor(position));
+    size_t upper_index = static_cast<size_t>(std::ceil(position));
+    
+    if (lower_index == upper_index) {
+        return sorted_jitters[lower_index];
+    }
+    
+    // 线性插值
+    double fraction = position - lower_index;
+    return static_cast<long long>((1.0 - fraction) * sorted_jitters[lower_index] + 
+                                  fraction * sorted_jitters[upper_index]);
+}
+
 // 处理所有统计器的报告
 void ChronoHelper::report_all(const Clock::time_point& now) {
+    // 记录报告开始时间，用于剔除计算耗时
+    auto report_start_time = Clock::now();
+    
     common_last_report_time = now;
     std::ostringstream oss;
+    
     for (auto& pair : stats_map) {
         int counter_id = pair.first;
         Stats& s = pair.second;
-        if (s.count == 0) continue;
-        double avg_dev = (double)s.total_dev / (double)s.count;
+        
+        if (s.jitters.empty()) continue;
+        
+        // 复制当前抖动数据并排序，用于计算百分位数
+        std::vector<long long> sorted_jitters = s.jitters;
+        std::sort(sorted_jitters.begin(), sorted_jitters.end());
+        
         long long expected_interval = expected_interval_map[counter_id];
         if (expected_interval == 0 && !s.recent_intervals.empty()) {
             expected_interval = calculate_average_interval(s);
         }
+        
+        // 计算统计指标
+        long long max_jitter = sorted_jitters.back(); // 最大值就是最后一个元素
+        long long p99_jitter = calculate_percentile(sorted_jitters, 0.999);
+        long long p95_jitter = calculate_percentile(sorted_jitters, 0.95);
+        long long p70_jitter = calculate_percentile(sorted_jitters, 0.70);
+        
         oss << "Timer #" << counter_id
-            << " | Set: " << std::left << std::setw(8) << expected_interval
-            << " us | MaxErr: " << std::setw(8) << s.max_positive
-            << " us | MinErr: " << std::setw(8) << s.max_negative
-            << " us | AvgErr: " << std::fixed << std::setprecision(2) << avg_dev << " us\n";
-        s.max_positive = 0;
-        s.max_negative = 0;
-        s.total_dev = 0;
-        s.count = 0;
+            << " | Set: " << std::left << std::setw(6) << expected_interval
+            << " us | Max: " << std::setw(6) << max_jitter
+            << " us | P99.9: " << std::setw(6) << p99_jitter
+            << " us | P95: " << std::setw(6) << p95_jitter
+            << " us | P70: " << std::setw(6) << p70_jitter << " us\n";
+        
+        // 清空当前统计周期的数据，为下一个周期做准备
+        s.jitters.clear();
+        s.max_jitter = 0;
     }
+    
     std::string output = oss.str();
     if (output.empty()) return;
+    
+    // 计算并剔除报告本身的耗时
+    auto report_end_time = Clock::now();
+    long long report_duration = time_diff_us(report_start_time, report_end_time);
+    
+    // 更新最后报告时间，剔除报告耗时的影响
+    common_last_report_time = common_last_report_time + std::chrono::microseconds(report_duration);
+    
     if (overwrite_output && !last_output.empty()) {
         int line_count = std::count(last_output.begin(), last_output.end(), '\n');
         std::cout << "\033[" << line_count << "A";
@@ -101,28 +151,35 @@ void ChronoHelper::report_all(const Clock::time_point& now) {
 void ChronoHelper::record(int counter_id, long long expected_interval) {
     if (off || counter_id < 0 || counter_id > 10) return;
     auto now = Clock::now();
+    
     if (expected_interval > 0) {
         expected_interval_map[counter_id] = expected_interval;
     }
+    
     if (stats_map.find(counter_id) == stats_map.end()) {
         stats_map[counter_id] = Stats();
         stats_map[counter_id].last_call_time = now;
         return;
     }
+    
     Stats& s = stats_map[counter_id];
     long long actual_interval = time_diff_us(s.last_call_time, now);
+    
     if (expected_interval == 0) {
         s.recent_intervals.emplace_back(now, actual_interval);
         clean_old_intervals(s, now);
         expected_interval = calculate_average_interval(s);
         expected_interval_map[counter_id] = expected_interval;
     }
-    long long deviation = actual_interval - expected_interval;
-    if (deviation > s.max_positive) s.max_positive = deviation;
-    if (deviation < s.max_negative) s.max_negative = deviation;
-    s.total_dev += deviation;
-    s.count++;
+    
+    // 计算抖动绝对值
+    long long jitter = std::abs(actual_interval - expected_interval);
+    
+    // 更新统计
+    if (jitter > s.max_jitter) s.max_jitter = jitter;
+    s.jitters.push_back(jitter);
     s.last_call_time = now;
+    
     if (time_diff_us(common_last_report_time, now) >= REPORT_INTERVAL) {
         report_all(now);
     }
