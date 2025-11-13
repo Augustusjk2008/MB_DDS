@@ -152,8 +152,8 @@ void test_rs422_device() {
     ControlPlane::XdmaTransport transport;
     TransportConfig cfg_tp;
     cfg_tp.device_path = "/dev/xdma0";
-    cfg_tp.event_number = 4;
-    cfg_tp.device_offset = 0x40000;
+    cfg_tp.event_number = 1;
+    cfg_tp.device_offset = 0x20000;
     // cfg_tp.device_offset = 0x00000; // 3号引信
     // cfg_tp.device_offset = 0x10000; //
     // cfg_tp.device_offset = 0x20000; //
@@ -762,10 +762,10 @@ int main() {
     LOG_BLANK_LINE();
 
     // test_udp_link();
-    // test_rs422_device();
+    test_rs422_device();
     // test_helm_transport();
     // test_ddr_transport();
-    test_can_transport();
+    // test_can_transport();
 
     LOG_DOUBLE_SEPARATOR();
     LOG_TITLE("Physical Layer Test Suite Finished");

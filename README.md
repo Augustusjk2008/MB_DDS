@@ -1,501 +1,219 @@
-# MB_DDF - 弹载高性能数据分发框架
+# MB_DDF — 弹载高性能数据分发框架（按当前 src 内容重写）
 
 ## 项目简介
 
-MB_DDF（Missile Borne Data Distribution Framework）面向高实时性场景，采用共享内存与无锁环形缓冲区的发布-订阅模型，提供微秒级延迟的数据分发能力。物理层采用数据面/控制面分层设计，当前提供 `UdpLink` 与基于寄存器的 `Rs422Device`，并可按需扩展其他链路。
+MB_DDF（Missile-Borne Data Distribution Framework）面向高实时性与高可靠性场景，采用共享内存与无锁环形缓冲的发布-订阅模型，提供微秒级延迟的数据分发能力。物理层遵循数据面/控制面分层，当前实现包含 UDP、RS422 设备，以及 CAN/CAN-FD、Helm 等设备适配与 XDMA/SPI 等控制面入口，可据硬件能力扩展。
 
 ## 核心特性
 
-- 高性能发布/订阅：共享内存 + 无锁环形缓冲区，微秒级延迟
-- 统一接口分层：数据面 `ILink` 与控制面 `IDeviceTransport`
-- 现有链路：`UdpLink` 与 `Rs422Device`（寄存器收发）
-- 消息完整性：可选 CRC32 校验，纳秒级时间戳
-- 线程安全：无锁队列 + RAII 信号量守卫
-- 单例控制：`DDSCore` 管理生命周期与资源
+- 发布/订阅高性能：共享内存 + 无锁 `RingBuffer`
+- 清晰分层：数据面 `ILink` 与控制面 `IDeviceTransport`
+- 设备适配丰富：`Rs422Device`、`CanDevice`、`CanFdDevice`、`HelmDevice`
+- 控制面实现：`XdmaTransport`、`SpiTransport`、`NullTransport`
+- 事件聚合：`EventMultiplexer`；统一事件 fd/等待机制
+- 调试与监控：`Logger`、`DDSMonitor`、`SharedMemoryAccessor`
+- 定时能力：`SystemTimer`（支持 `s/ms/us/ns` 周期）
 
-## 项目结构
+## 目录结构（基于 src/MB_DDF）
 
 ```
-MB_DDF/
-├── src/MB_DDF/
-│   ├── DDS/                    # DDS核心模块
-│   │   ├── DDSCore.h/cpp       # DDS主控制类（单例）
-│   │   ├── Message.h           # 消息结构定义
-│   │   ├── Publisher.h/cpp     # 发布者实现
-│   │   ├── Subscriber.h/cpp    # 订阅者实现
-│   │   ├── RingBuffer.h/cpp    # 无锁环形缓冲区
-│   │   ├── SharedMemory.h/cpp  # 共享内存管理
-│   │   ├── SemaphoreGuard.h    # RAII 信号量守卫
-│   │   └── TopicRegistry.h/cpp # Topic注册表管理
-│   ├── Debug/                  # 调试模块
-│   │   ├── Logger.h            # 日志系统
-│   │   └── LoggerExtensions.h  # 日志扩展
-│   ├── Monitor/                # 监控模块
-│   │   ├── DDSMonitor.h/cpp    # DDS系统监控
-│   │   └── SharedMemoryAccessor.h/cpp # 共享内存访问器
-│   ├── PhysicalLayer/          # 物理层模块（数据面/控制面分层）
-│   │   ├── DataPlane/          # 数据面：统一链路接口与实现
-│   │   │   ├── ILink.h         # 统一数据面接口（send/receive、ioctl、事件fd）
-│   │   │   └── UdpLink.h/cpp   # UDP 链路实现（非阻塞 + poll）
-│   │   ├── Device/             # 设备型链路适配器
-│   │   │   ├── TransportLinkAdapter.h # ILink 适配基类（桥接控制面）
-│   │   │   └── Rs422Device.h/cpp      # RS422 设备适配器（寄存器收发、ioctl配置）
-│   │   ├── ControlPlane/       # 控制面：设备/总线访问抽象
-│   │   │   ├── IDeviceTransport.h     # 控制面接口（寄存器、DMA、事件fd）
-│   │   │   ├── XdmaTransport.h/cpp    # XDMA 控制面实现（mmap寄存器、DMA、事件）
-│   │   │   └── NullTransport.h        # 空实现/Mock（用于测试）
-│   │   ├── Support/            # 物理层通用支持
-│   │   │   └── Log.h           # 轻量日志宏（数据面/设备适配器使用）
-│   │   └── Types.h             # 通用类型（TransportConfig/LinkConfig/Endpoint等）
-│   ├── Timer/                  # 定时器模块
-│   │   ├── SystemTimer.h/cpp   # 高精度周期定时器（POSIX定时器 + 实时信号）
-│   │   └── ChronoHelper.h/cpp  # 时间转换与测量工具
-│   └── Test/                   # 测试程序
-│       ├── TestPubSub*.cpp     # 发布-订阅测试
-│       ├── TestPub*.cpp        # 发布者测试
-│       ├── TestSub*.cpp        # 订阅者测试
-│       ├── TestMonitor.cpp     # 监控测试
-│       └── TestFunc*.cpp       # 模拟业务测试
-├── CMakeLists.txt              # CMake构建配置
-├── build.sh                    # 构建脚本
-└── README.md                   # 项目文档
+src/MB_DDF/
+├── DDS/                      # DDS 核心
+│   ├── DDSCore.{h,cpp}
+│   ├── Message.h
+│   ├── Publisher.{h,cpp}
+│   ├── Subscriber.{h,cpp}
+│   ├── RingBuffer.{h,cpp}
+│   ├── SharedMemory.{h,cpp}
+│   ├── SemaphoreGuard.h
+│   └── TopicRegistry.{h,cpp}
+├── Debug/                    # 日志与调试
+│   ├── Logger.h
+│   └── LoggerExtensions.h
+├── Monitor/                  # 运行监控
+│   ├── DDSMonitor.{h,cpp}
+│   └── SharedMemoryAccessor.{h,cpp}
+├── PhysicalLayer/            # 物理层（数据面/控制面/设备）
+│   ├── DataPlane/
+│   │   ├── ILink.h
+│   │   └── UdpLink.{h,cpp}
+│   ├── ControlPlane/
+│   │   ├── IDeviceTransport.h
+│   │   ├── XdmaTransport.{h,cpp}
+│   │   ├── SpiTransport.{h,cpp}
+│   │   └── NullTransport.h
+│   ├── Device/
+│   │   ├── CanDevice.{h,cpp}
+│   │   ├── CanFdDevice.{h,cpp}
+│   │   ├── CanFdDeviceHardware.cpp
+│   │   ├── Rs422Device.{h,cpp}
+│   │   ├── HelmDevice.{h,cpp}
+│   │   └── TransportLinkAdapter.h
+│   ├── EventMultiplexer.{h,cpp}
+│   ├── Hardware/
+│   │   ├── pl_can.h
+│   │   └── pl_canfd.h
+│   ├── Support/Log.h
+│   └── Types.h               # TransportConfig/LinkConfig/Endpoint 等
+├── Timer/
+│   ├── SystemTimer.{h,cpp}
+│   └── ChronoHelper.{h,cpp}
+└── Test/                     # 测试程序（可执行）
+    ├── TestPub* / TestSub* / TestPubSub*
+    ├── TestMonitor.cpp
+    ├── TestPhysicalLayer.cpp
+    ├── TestRealTime.cpp
+    ├── TestPublishPerf.cpp
+    ├── TestFuncAutoPilot.cpp
+    ├── TestFuncFlyControl.cpp
+    ├── TestFuncHelmControl.cpp
+    └── TestWithUI.cpp        # 需要 FTXUI
 ```
 
-## 系统要求
+根目录还包含：`CMakeLists.txt`（构建配置）、`build.sh`（一键构建/交叉编译/测试）、`docs/can/` 与 `docs/canfd/`（硬件资料）。
 
-- **操作系统**：Linux（支持POSIX共享内存）
-- **编译器**：支持C++20标准的编译器（GCC 10+, Clang 12+）
-- **CMake**：版本3.10或更高
-- **依赖库**：
-  - pthread（线程库，用于并发和可选的定时器独立线程）
-  - rt（实时扩展库，提供POSIX定时器与共享内存等）
-  - syscall/`eventfd`（Linux内核接口，用于定时器线程唤醒机制）
+## 构建与运行
 
-## 快速开始
+### 使用脚本（推荐）
 
-### 1. 编译项目
+- `./build.sh`：本机 Debug 构建，输出到 `build/host/`
+- `./build.sh -r`：本机 Release 构建
+- `./build.sh -c`：清理后构建（清理 `build/`）
+- `./build.sh -t`：构建后后台启动所有本机测试程序
+- `./build.sh --cross`：ARM aarch64 交叉编译（Yocto/UCAS），输出到 `build/aarch64/`
+- `./build.sh --both`：同时构建本机与交叉产物
 
-使用提供的构建脚本：
+提示：脚本会生成 `build/host/compile_commands.json` 并在根目录创建软链 `compile_commands.json`，便于 IDE/clangd 使用。
+
+### 直接使用 CMake
 
 ```bash
-# 构建Debug版本（默认）
-./build.sh
-
-# 构建Release版本
-./build.sh -r
-
-# 清理后重新构建
-./build.sh -c
-
-# 自动运行所有测试程序
-./build.sh -t
-
-# 查看帮助信息
-./build.sh -h
-
-# 交叉编译（Yocto/UCAS aarch64）
-# 先加载交叉编译环境
-source /opt/wanghuo/v2.0.0-rc4/environment-setup-armv8a-ucas-linux
-
-# 交叉编译 Debug
-./build.sh --cross
-
-# 清理后交叉编译 Debug
-./build.sh -c --cross
-
-# 交叉编译 Release
-./build.sh -r --cross
-```
-
-### 2. 手动使用CMake
-
-```bash
-# 创建构建目录
-mkdir build && cd build
-
-# 配置CMake（Debug版本）
+mkdir -p build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Debug
-
-# 或配置Release版本
-cmake .. -DCMAKE_BUILD_TYPE=Release
-
-# 编译
 cmake --build . --parallel $(nproc)
-
 # 查看构建信息
 cmake --build . --target info
 ```
 
-#### 交叉编译手动配置
+交叉编译（手动）：
 
 ```bash
-# 加载环境（会设置 OECORE_*、SDKTARGETSYSROOT 等变量）
 source /opt/wanghuo/v2.0.0-rc4/environment-setup-armv8a-ucas-linux
-
-mkdir build && cd build
-
-# 优先使用环境提供的工具链文件
 cmake .. -DCMAKE_BUILD_TYPE=Release -DCROSS_COMPILE=ON \
   -DCMAKE_TOOLCHAIN_FILE=$OECORE_CMAKE_TOOLCHAIN_FILE \
   -DCMAKE_SYSROOT=$SDKTARGETSYSROOT \
-  -DCMAKE_EXE_LINKER_FLAGS="--sysroot=$SDKTARGETSYSROOT" \
-  -DCMAKE_SHARED_LINKER_FLAGS="--sysroot=$SDKTARGETSYSROOT" \
   -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
   -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
   -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
   -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
-
-# 如果没有工具链文件（非Yocto环境），手动指定编译器与sysroot
-cmake .. -DCMAKE_BUILD_TYPE=Release -DCROSS_COMPILE=ON \
-  -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
-  -DCMAKE_SYSROOT=/opt/wanghuo/v2.0.0-rc4/sysroots/armv8a-ucas-linux \
-  -DCMAKE_C_COMPILER=aarch64-ucas-linux-gcc \
-  -DCMAKE_CXX_COMPILER=aarch64-ucas-linux-g++ \
-  -DCMAKE_EXE_LINKER_FLAGS="--sysroot=/opt/wanghuo/v2.0.0-rc4/sysroots/armv8a-ucas-linux" \
-  -DCMAKE_SHARED_LINKER_FLAGS="--sysroot=/opt/wanghuo/v2.0.0-rc4/sysroots/armv8a-ucas-linux" \
-  -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
-  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
-  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
-  -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
-
 cmake --build . --parallel $(nproc)
 ```
 
-### IDE/Clangd 配置（交叉编译场景）
+### 运行测试程序
 
-如果你使用clang等编译器做代码检查，在交叉编译（aarch64）后，clangd 需要从交叉工具链查询标准库与 sysroot 的包含路径，否则可能报错找不到 `<cstdint>` 等标准头（但不影响实际使用）。
+- 本机构建产物位于 `build/host/`：例如运行 `./build/host/TestMonitor`
+- 交叉构建产物位于 `build/aarch64/`：需拷贝至目标板运行（例如 ARM64）
 
-- 确认生成 `build/compile_commands.json`（项目已启用 `CMAKE_EXPORT_COMPILE_COMMANDS ON`）。
-- VSCode 的 `.vscode/settings.json` 中建议设置：
-  - `"--compile-commands-dir=build"` 指向构建目录
-  - `"--query-driver=/opt/wanghuo/v2.0.0-rc4/sysroots/x86_64-ucassdk-linux/usr/bin/aarch64-ucas-linux/*"` 允许 clangd 向交叉编译器查询系统包含路径
-- 可选：为部分工具兼容性创建软链接
-  - `ln -sf build/compile_commands.json ./compile_commands.json`
-- 修改后重启 VSCode 或执行 Clangd: Restart language server。
+`TestWithUI` 依赖 FTXUI（本机 `/usr/local` 或交叉环境 `/usr/local`），若未找到将自动跳过该目标。
 
-说明：`--query-driver` 是 clangd 的官方机制，用于识别 GCC/Clang 驱动并抽取其默认包含路径，与 Yocto/UCAS SDK 的 `OECORE_*` 环境配合可正确解析交叉环境的标准库。
+## 系统要求与依赖
 
-### 3. 运行测试程序
+- 操作系统：Linux
+- 编译器：GCC/Clang，支持 C++20
+- 构建工具：CMake ≥ 3.10
+- 基础库：`pthread`、`rt`
+- 可选库：
+  - `liburing`（启用 `MB_DDF_HAS_IOURING`，io_uring 异步支持）
+  - `libaio`（启用 `MB_DDF_HAS_LIBAIO`，异步 DMA）
+  - `libgpiod`（GPIO 事件支持，供 `SpiTransport` 使用）
+  - `ftxui`（仅 `TestWithUI` 需要）
 
-编译完成后，可执行文件位于`build/`目录：
+## 快速示例
 
-```bash
-# 运行发布-订阅测试
-./build/TestPubSub1
-
-# 运行监控程序
-./build/TestMonitor
-
-# 运行其他测试程序
-./build/TestPub1
-./build/TestSub1
-```
-
-## API使用示例
-
-### 基本发布-订阅示例
+### 发布-订阅（共享内存）
 
 ```cpp
 #include "MB_DDF/DDS/DDSCore.h"
 #include "MB_DDF/Debug/Logger.h"
-
-int main() {
-    // 设置日志级别
-    LOG_SET_LEVEL_INFO();
-    
-    // 获取DDS实例并初始化
-    auto& dds = MB_DDF::DDS::DDSCore::instance();
-    dds.initialize(128 * 1024 * 1024); // 分配128MB共享内存
-    
-    // 创建发布者
-    auto publisher = dds.create_publisher("local://test_topic");
-    
-    // 创建订阅者（回调模式）
-    auto subscriber = dds.create_subscriber("local://test_topic", true,
-        [](const void* data, size_t size, uint64_t timestamp) {
-            const char* msg = static_cast<const char*>(data);
-            LOG_INFO << "Received: " << msg;
-        });
-    
-    // 发布数据
-    std::string message = "Hello, DDS!";
-    publisher->write(message.c_str(), message.size());
-    
-    // 回调模式订阅，无需手动读取
-    
-    return 0;
+int main(){
+  LOG_SET_LEVEL_INFO();
+  auto& dds = MB_DDF::DDS::DDSCore::instance();
+  dds.initialize(64 * 1024 * 1024);
+  auto pub = dds.create_publisher("local://topic");
+  auto sub = dds.create_subscriber("local://topic", true,
+    [](const void* d,size_t n,uint64_t ts){ LOG_INFO << "n=" << n; });
+  const char msg[] = "hello"; pub->write(msg, sizeof(msg));
 }
 ```
 
-### 手动读取示例
-
-```cpp
-#include "MB_DDF/DDS/DDSCore.h"
-#include "MB_DDF/Debug/Logger.h"
-
-int main() {
-    LOG_SET_LEVEL_INFO();
-    auto& dds = MB_DDF::DDS::DDSCore::instance();
-    dds.initialize(128 * 1024 * 1024);
-
-    auto publisher = dds.create_publisher("local://test_topic");
-    // 手动读取：不传回调
-    auto subscriber = dds.create_subscriber("local://test_topic", true);
-
-    std::string message = "Hello, DDS!";
-    publisher->write(message.c_str(), message.size());
-
-    char buffer[1024];
-    size_t n = subscriber->read(buffer, sizeof(buffer), /*latest*/true);
-    LOG_INFO << "read bytes: " << n;
-
-    return 0;
-}
-```
-
- - 别名：`create_writer` 是 `create_publisher` 的别名；`create_reader` 是 `create_subscriber` 的别名。
- - 进阶：支持零拷贝发布 `publish_fill(max_size, fill_fn)`，或使用 `begin_message()` 获得 `WritableMessage` 进行 `commit/cancel`。
-
-## 物理层设计概览
-
- - 分层架构：
-  - 数据面（DataPlane）：统一链路接口 `ILink`，提供 `send/receive`、事件fd、阻塞接收（超时）及通用 `ioctl`。
-  - 控制面（ControlPlane）：设备/总线访问抽象 `IDeviceTransport`，提供寄存器读写、DMA（可选）、事件等待等。
-  - 设备适配（Device）：`TransportLinkAdapter` 桥接控制面为数据面；`Rs422Device` 基于寄存器实现收发与配置。
-
-- 类型与配置：
-  - `TransportConfig`：控制面配置（设备路径、DMA通道、事件编号、设备偏移）。
-  - `TransportConfig.device_path`：使用设备基路径（如 `/dev/xdma/rs422_0`），内部派生 `*_user`、`*_h2c_<ch>`、`*_c2h_<ch>`、`*_events_<num>`。
-  - `LinkConfig`：链路配置（名称等，具体链路可自定义扩展）。
-  - `LinkConfig.name`（UDP）：支持两种格式：`"<local_port>"` 或 `"<local_ip>:<local_port>|<remote_ip>:<remote_port>"`。
-  - `Endpoint`：数据面端点抽象（当前使用 `channel_id`，不同链路可对应端口/通道）。
-
-- UDP 链路：
-  - `UdpLink` 实现了 `ILink` 接口，使用非阻塞 socket；支持 `receive(buf, size, ep, timeout_us)` 基于 `poll` 的阻塞接收；`ioctl` 不支持返回 `-ENOTSUP`。
-
-- RS422 设备链路：
-  - `Rs422Device` 通过 `IDeviceTransport` 的寄存器映射访问设备；重载 `send/receive` 使用寄存器 BRAM 缓冲区与命令寄存器。
-  - `open()` 要求控制面已映射用户寄存器空间；`ioctl(IOCTL_CONFIG, Config)` 进行设备配置（UCR/MCR/BRSR/ICR/头字节等）；`send` 单次最大长度 255 字节，内部按 4 字节对齐写入缓冲区并触发 `CMD_TX`。
-
-### UDP 链路示例
+### UDP 链路
 
 ```cpp
 #include "MB_DDF/PhysicalLayer/DataPlane/UdpLink.h"
-#include "MB_DDF/Debug/Logger.h"
-
 using namespace MB_DDF::PhysicalLayer::DataPlane;
-
-int main() {
-    LOG_SET_LEVEL_INFO();
-    UdpLink link;
-    LinkConfig cfg; cfg.name = "127.0.0.1:6000|127.0.0.1:7000"; // 格式：<local_ip>:<local_port>|<remote_ip>:<remote_port>
-    if (!link.open(cfg)) {
-        LOG_ERROR << "UdpLink open failed";
-        return -1;
-    }
-    const char msg[] = "hello";
-    link.send(reinterpret_cast<const uint8_t*>(msg), sizeof(msg)); // 已配置默认远端，可省略 Endpoint
-
-    uint8_t buf[256]; Endpoint src{};
-    int32_t n = link.receive(buf, sizeof(buf), src, 1000); // 1ms 超时；0=超时，<0=错误
-    LOG_INFO << "received: " << n;
-    link.close();
-}
+int main(){ UdpLink link; LinkConfig c; c.name="127.0.0.1:6000|127.0.0.1:7000"; link.open(c); }
 ```
 
-### RS422 设备示例（寄存器收发 + 配置）
+### RS422 + XDMA 控制面
 
 ```cpp
 #include "MB_DDF/PhysicalLayer/Device/Rs422Device.h"
 #include "MB_DDF/PhysicalLayer/ControlPlane/XdmaTransport.h"
-#include "MB_DDF/Debug/Logger.h"
-
 using namespace MB_DDF::PhysicalLayer;
-
-int main() {
-    LOG_SET_LEVEL_INFO();
-
-    ControlPlane::XdmaTransport tp;
-    TransportConfig tp_cfg; tp_cfg.device_path = "/dev/xdma/rs422_0"; // 设备基路径；内部派生 *_user/_h2c_<ch>/_c2h_<ch>/_events_<num>
-    if (!tp.open(tp_cfg)) { LOG_ERROR << "transport open failed"; return -1; }
-
-    Device::Rs422Device dev(tp, /*mtu*/2048);
-    LinkConfig link_cfg; if (!dev.open(link_cfg)) { LOG_ERROR << "device open failed"; return -1; }
-
-    // 配置（参考 rs422_config 功能）
-    Device::Rs422Device::Config c;
-    c.ucr = /*parity/check 编码值*/ 0x00; c.mcr = 0x20; c.brsr = /*baud*/ 0x03; c.icr = 1;
-    c.tx_head_lo = 0xAA; c.tx_head_hi = 0x55; c.rx_head_lo = 0xCC; c.rx_head_hi = 0x33;
-    int ret = dev.ioctl(Device::Rs422Device::IOCTL_CONFIG, &c, sizeof(c), nullptr, 0);
-    if (ret != 0) { LOG_ERROR << "ioctl config failed: " << ret; }
-
-    // 发送/接收（寄存器路径；单次 send 最多 255 字节）
-    DataPlane::Endpoint ep{0};
-    uint8_t out[10] = {1,2,3,4,5};
-    dev.send(out, 5, ep);
-    uint8_t inb[256]; DataPlane::Endpoint src{};
-    int32_t n = dev.receive(inb, sizeof(inb), src, 1000);
-    LOG_INFO << "received: " << n;
-
-    dev.close(); tp.close();
+int main(){
+  ControlPlane::XdmaTransport tp; TransportConfig tpc; tpc.device_path="/dev/xdma/rs422_0"; /* 可选: tpc.device_offset=0x0 */
+  tp.open(tpc); Device::Rs422Device dev(tp, 2048); LinkConfig lc; dev.open(lc);
 }
 ```
 
-### 高精度定时器示例
+## 物理层设计要点
 
-```cpp
-#include "MB_DDF/Timer/SystemTimer.h"
-#include "MB_DDF/Debug/Logger.h"
-#include <atomic>
-#include <chrono>
-#include <thread>
+- 数据面 `ILink`：统一 `open/close/send/receive/ioctl`；提供超时阻塞接收与事件 fd
+- 控制面 `IDeviceTransport`：统一寄存器/DMA/事件访问；支持 `XdmaTransport`、`SpiTransport`
+- 设备适配：`TransportLinkAdapter` 桥接控制面至数据面；`Rs422Device` 等按设备寄存器实现
+- 事件聚合：`EventMultiplexer` 将多事件源集合为统一等待接口
+- 典型配置：`TransportConfig.device_path`（基路径，派生 `_user/_h2c/_c2h/_events`），`TransportConfig.device_offset`（设备偏移，示例：`0x00000`），事件编号/通道号等
+- UDP 配置：`LinkConfig.name` 支持 `"<local_port>"` 或 `"<local_ip>:<local_port>|<remote_ip>:<remote_port>"`
+- RS422 限制：单次 `send` 最多 255 字节；内部按 4 字节对齐写寄存器并触发发送命令
 
-int main() {
-    LOG_SET_LEVEL_INFO();
+## 日志/监控与定时器
 
-    std::atomic<int> ticks{0};
+- 日志：`Logger.h` 提供等级与格式控制（`TRACE/DEBUG/INFO/WARN/ERROR`）
+- 监控：`DDSMonitor` 与 `SharedMemoryAccessor` 提供共享内存/Topic 观测
+- 定时器：`SystemTimer` 支持在信号处理上下文或独立线程执行；可配置 `SCHED_FIFO/RR`、优先级与绑核
 
-    MB_DDF::Timer::SystemTimerOptions opt;
-    opt.use_new_thread = true;      // 在独立线程执行回调
-    opt.sched_policy = SCHED_FIFO;  // 需要合适权限
-    opt.priority = 60;              // 0-99（FIFO/RR）
-    opt.cpu = -1;                   // 不绑核（可选）
+## IDE/Clangd（交叉场景）
 
-    auto timer = MB_DDF::Timer::SystemTimer::start("10ms", [&]{
-        ++ticks;
-        LOG_INFO << "tick: " << ticks.load();
-    }, opt);
+- 生成 `build/host/compile_commands.json` 并软链到根目录
+- 建议设置 clangd `--query-driver=/opt/wanghuo/v2.0.0-rc4/sysroots/x86_64-ucassdk-linux/usr/bin/aarch64-ucas-linux/*` 以解析交叉包含路径
 
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-    timer->stop();
-    return 0;
-}
-```
+## 测试程序速览
 
-- 支持周期字符串：`1s`、`20ms`、`500us`、`100ns`
-- 两种执行模式：在信号处理上下文执行或独立线程执行
-- 可配置实时调度策略与优先级，以及绑核选项
+- 发布订阅：`TestPubSub1/2`，发布者/订阅者：`TestPub1/2`、`TestSub1/2/3`
+- 监控：`TestMonitor`
+- 物理层：`TestPhysicalLayer`（含控制面/设备示例与注释）
+- 性能与实时：`TestPublishPerf`、`TestRealTime`
+- 业务模拟：`TestFuncAutoPilot`、`TestFuncFlyControl`、`TestFuncHelmControl`
+- UI 演示：`TestWithUI`（需要 FTXUI）
 
-## 并发与同步
+## 文档与资料
 
-### RAII 信号量守卫（SemaphoreGuard）
-- **设计意图**：用 RAII 封装 `sem_wait/sem_post`，在作用域结束时自动释放，避免遗漏 `sem_post` 导致死锁。
-- **适用范围**：保护 SharedMemory 管理的共享资源访问，包括 `DDSCore` 的发布/订阅创建、`TopicRegistry` 初始化与注册，以及 `RingBuffer` 订阅者注册/注销。
-- **关键行为**：
-  - 构造时尝试 `sem_wait` 获取信号量；异常或失败会记录错误但不崩溃。
-  - 析构时执行 `sem_post` 释放；支持移动语义避免重复释放。
-- **示例**：
-```cpp
-#include "MB_DDF/DDS/SemaphoreGuard.h"
-
-void safe_register(MB_DDF::DDS::SharedMemoryManager* shm) {
-    auto sem = shm->get_semaphore();
-    MB_DDF::DDS::SemaphoreGuard guard(sem);
-    // 在此作用域内安全访问共享内存 / Topic 注册表
-}
-```
-- **注意**：`SharedMemoryManager` 内部的 `sem_timedwait` 用于创建/打开阶段的死锁规避，语义不同，未替换为 RAII。
-
-## 核心组件说明
-
-### DDSCore
-- **功能**：DDS系统的主控制类，采用单例模式
-- **职责**：管理共享内存、Topic注册、发布者/订阅者创建
-- **版本**：0.4.5（0x00004005）
-
-### 消息系统
-- **MessageHeader**：包含魔数、Topic ID、序列号、时间戳、数据大小和校验和
-- **Message**：完整消息结构，包含消息头和数据部分
-- **校验机制**：支持CRC32校验确保数据完整性
-
-### 共享内存
-- **SharedMemoryManager**：管理进程间共享内存区域
-- **RingBuffer**：无锁环形缓冲区，支持高并发读写
-- **TopicRegistry**：Topic注册表，管理Topic元数据
-
-### 物理层
-- **数据面**：`ILink`（send/receive/ioctl、事件fd、MTU）
-- **控制面**：`IDeviceTransport`（mmap 寄存器、DMA、事件fd）
-- **设备适配**：`TransportLinkAdapter` 与 `Rs422Device`；`UdpLink` 提供基于 socket 的实现
-
-### 定时器
-- **SystemTimer**：高精度周期定时器，支持`s/ms/us/ns`周期字符串
-- **执行模式**：信号处理上下文或独立工作线程（eventfd唤醒）
-- **调度配置**：支持`SCHED_FIFO/RR`、优先级设置与绑核
-
-## 调试和监控
-
-### 日志系统
-```cpp
-// 设置日志级别
-LOG_SET_LEVEL_TRACE();  // 最详细
-LOG_SET_LEVEL_DEBUG();
-LOG_SET_LEVEL_INFO();   // 推荐
-LOG_SET_LEVEL_WARN();
-LOG_SET_LEVEL_ERROR();
-
-// 控制日志格式
-LOG_DISABLE_TIMESTAMP();     // 禁用时间戳
-LOG_DISABLE_FUNCTION_LINE(); // 禁用函数名和行号
-```
-
-### 系统监控
-- **DDSMonitor**：提供DDS系统运行状态监控
-- **SharedMemoryAccessor**：共享内存访问统计和监控
-
-### GDB调试
-```bash
-# 以 Debug 构建并在 GDB 下运行
-./build.sh              # 默认 Debug 构建
-gdb --args ./build/TestPubSub1  # 指定要调试的可执行文件
-# 在 GDB 中常用命令：
-# (gdb) run
-# (gdb) bt                # 查看堆栈
-# (gdb) break Function    # 设置断点
-# (gdb) break file.cpp:42 # 按文件行号断点
-```
-
-## 性能特性
-
-- **延迟**：微秒级消息传递延迟
-- **吞吐量**：基于共享内存，支持高频数据传输
-- **内存效率**：无锁环形缓冲区，避免内存拷贝
-- **并发性**：支持多发布者、多订阅者并发访问
-
-## 应用场景
-
-- **实时控制系统**：导弹控制、自动驾驶、飞行控制、船舶控制
-- **高频数据采集**：传感器数据分发、监控系统
-- **进程间通信**：需要低延迟、高可靠性的IPC场景
-- **分布式系统**：微服务间的高性能消息传递
+- `docs/can/can.md`、`docs/can/can.pdf`
+- `docs/canfd/pg223-canfd.pdf`
 
 ## 注意事项
 
-1. **共享内存大小**：根据实际数据量调整初始化时的内存大小
-2. **Topic命名**：使用有意义的Topic名称，需包含`local://`、`192.168.1.100://`等域前缀
-3. **线程安全**：发布者和订阅者都是线程安全的
-4. **资源清理**：程序退出时会自动清理共享内存资源
-5. **错误处理**：注意检查初始化和创建操作的返回值
+- 共享内存大小需按数据量调整（`DDSCore::initialize(bytes)`）
+- Topic 前缀建议包含域，如 `local://` 或 `192.168.x.x://`
+- 对于 `SpiTransport`，若无 `libgpiod` 将禁用 GPIO 事件 fd（自动检测）
+- 若未找到 `liburing/libaio`，将禁用对应异步特性（自动检测）
+- `TestWithUI` 需 FTXUI；未安装将跳过该可执行目标
 
-## 许可证
+## 贡献与反馈
 
-本项目采用开源许可证（MIT License）。
+- 作者：Jiangkai
+- 问题反馈：请在代码库内提 Issue 或通过既有渠道沟通
 
-## 贡献指南
+——
 
-欢迎提交Issue和Pull Request来改进项目。在提交代码前，请确保：
-
-1. 代码符合项目的编码规范
-2. 通过所有测试用例
-3. 添加必要的文档和注释
-4. 遵循C++20标准
-
-## 联系方式
-
-- **作者**：Jiangkai
-- **项目地址**：[https://github.com/Augustusjk2008/MB_DDS]
-- **问题反馈**：通过GitHub Issues提交
-
----
-
-*最后更新：2025年10月27日*
+最后更新：2025-11-13
