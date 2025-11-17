@@ -116,8 +116,8 @@ int CanDevice::ioctl(uint32_t opcode, const void* in, size_t in_len, void* out, 
         case IOCTL_SET_LOOPBACK: {
             bool on = (in && in_len >= sizeof(uint32_t)) ? (*(reinterpret_cast<const uint32_t*>(in)) != 0) : true;
             // 和原始寄存器流程一致：在配置模式下设置，再启用核心
-            if (!__enter_config()) return -1;
-            if (!__set_loopback(on)) return -1;
+            if (!__enter_config()) return -2;
+            if (!__set_loopback(on)) return -3;
             return __enable_core() ? 0 : -1;
         }
         case IOCTL_SET_BIT_TIMING: {

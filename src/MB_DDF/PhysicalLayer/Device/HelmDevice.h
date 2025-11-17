@@ -45,7 +45,7 @@ public:
     int32_t receive(uint8_t* buf, uint32_t buf_size, uint32_t timeout_us) override;
 
     // ioctl: 实现 ioctlHelm —— 根据配置参数完成初始化与输出使能设置
-    int ioctl(uint32_t opcode, const void* in, size_t in_len, void* out, size_t out_len) override;
+    int ioctl(uint32_t opcode, const void* in, size_t in_len, void* out = nullptr, size_t out_len = 0) override;
 
 private:
     bool initialized_{false};

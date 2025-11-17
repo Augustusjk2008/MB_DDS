@@ -2,6 +2,7 @@
 #include "MB_DDF/Timer/ChronoHelper.h"
 #include "MB_DDF/PhysicalLayer/Device/HelmDevice.h"
 #include "MB_DDF/PhysicalLayer/ControlPlane/XdmaTransport.h"
+#include <cstdint>
 
 // 测试实时定时器
 using namespace MB_DDF::Timer;
@@ -12,18 +13,24 @@ void helm_callback(void* para) {
     auto helm = (MB_DDF::PhysicalLayer::Device::HelmDevice*)para;
     static uint16_t fdb[4];
     static uint32_t v_input[4] = {0x11111234, 0x55555678, 0x99999ABC, 0xEEEEEDF0};
-    helm->receive((uint8_t*)fdb, sizeof(fdb));
-    helm->send((uint8_t*)v_input, sizeof(v_input));
+    static int32_t hardware_enabled = 1;
+    if (hardware_enabled <= 0) {
+        hardware_enabled = helm->receive((uint8_t*)fdb, sizeof(fdb));
+        helm->send((uint8_t*)v_input, sizeof(v_input));
+    }
 
     ChronoHelper::record(0);
 }
 
 void cml_callback(void* para) {
-    static const size_t DATA_SIZE = 640 * 1024;
+    static const size_t DATA_SIZE = 64 * 1024;
     static std::vector<uint8_t> data(DATA_SIZE);
 
-    auto cml = (MB_DDF::PhysicalLayer::ControlPlane::XdmaTransport*)para;
-    cml->continuousReadAsync(0, data.data(), DATA_SIZE, 0);
+    static bool hardware_enabled = true;
+    if (hardware_enabled) {
+        auto cml = (MB_DDF::PhysicalLayer::ControlPlane::XdmaTransport*)para;
+        hardware_enabled = cml->continuousReadAsync(0, data.data(), DATA_SIZE, 0);
+    }
 
     // ChronoHelper::record(1);
 }

@@ -105,6 +105,13 @@ int HelmDevice::ioctl(uint32_t opcode, const void* in, size_t in_len, void* out,
         if (!wr16(ADDR_HELM_ENABLE, 0xEAE0)) return -1;
         if (!wr16(ADDR_PWM_ENABLE, 0xEA8C)) return -1;
         if (!wr16(ADDR_OUT_ENABLE_AD, cfg->out_enable)) return -1; // 输出使能
+        // if (!wr32(ADDR_HELM_ENABLE, 0xDAE0)) return -1;
+        // if (!wr32(ADDR_PARA_NUM_AD, 44)) return -1;
+        // if (!wr32(ADDR_PARA_AD, cfg->pwm_freq)) return -1;
+        // if (!wr32(ADDR_FILTER_ENABLE, cfg->ad_filter)) return -1;
+        // if (!wr32(ADDR_HELM_ENABLE, 0xEAE0)) return -1;
+        // if (!wr32(ADDR_PWM_ENABLE, 0xEA8C)) return -1;
+        // if (!wr32(ADDR_OUT_ENABLE_AD, cfg->out_enable)) return -1; // 输出使能
 
         initialized_ = true;
         LOGI("helm", "ioctl", 0, "initialized pwm_freq=%u out_enable=0x%04x ad_filter=%u",

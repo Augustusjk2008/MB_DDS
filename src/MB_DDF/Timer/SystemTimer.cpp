@@ -68,9 +68,11 @@ std::unique_ptr<SystemTimer> SystemTimer::start(const std::string& period_str,
         // 创建 POSIX 定时器：信号通知到当前线程（SIGEV_SIGNAL）
         sigevent sev{};
         memset(&sev, 0, sizeof(sev));
-        sev.sigev_notify = SIGEV_SIGNAL;
+        sev.sigev_notify = SIGEV_THREAD_ID;
         sev.sigev_signo = timer_ptr->signal_no_;
         sev.sigev_value.sival_ptr = timer_ptr;
+        pid_t tid = static_cast<pid_t>(syscall(SYS_gettid));
+        sev._sigev_un._tid = tid;
 
         if (timer_create(CLOCK_MONOTONIC, &sev, &timer_ptr->timer_id_) != 0) {
             // 无法创建定时器，线程直接返回

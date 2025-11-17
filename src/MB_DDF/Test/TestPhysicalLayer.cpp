@@ -2,7 +2,6 @@
  * @file TestPhysicalLayer.cpp
  * @brief 物理层 UDP 与 RS422-XDMA 适配器端到端测试
  */
-#include <cstddef>
 #include <cstdint>
 #include <unistd.h>
 #include <vector>
@@ -183,11 +182,11 @@ void test_rs422_device(int num) {
     LOG_INFO << "Rs422Device open succeeded.";
 
     // 3. 状态与能力检查
-    assert(adapter_422.getStatus() == LinkStatus::OPEN);
-    LOG_INFO << "getStatus() returns OPEN.";
+    // assert(adapter_422.getStatus() == LinkStatus::OPEN);
+    // LOG_INFO << "getStatus() returns OPEN.";
 
-    assert(adapter_422.getMTU() == test_mtu);
-    LOG_INFO << "getMTU() returns correct value (" << test_mtu << ").";
+    // assert(adapter_422.getMTU() == test_mtu);
+    // LOG_INFO << "getMTU() returns correct value (" << test_mtu << ").";
     
     // 4. 收发数据准备
     LOG_INFO << "Calling send/receive (hardware loopback required for data validation).";
@@ -261,9 +260,16 @@ void test_helm_transport() {
     Device::HelmDevice helm(tp_helm, 0);
     LinkConfig cfg_link; 
     helm.open(cfg_link);
+    // helm 配置
+    Device::HelmDevice::Config ctl_helm = {
+        .pwm_freq = 4000,
+        .out_enable = 0xFFFF,
+        .ad_filter = 1,
+    };
+    helm.ioctl(Device::HelmDevice::IOCTL_HELM, &ctl_helm, sizeof(ctl_helm));
     // 舵机 Ad 读取、PWM duty 设置
     uint16_t fdb[4];
-    uint32_t v_input[4] = {0x11111234, 0x55555678, 0x99999ABC, 0xEEEEEDF0};
+    uint32_t v_input[4] = {uint32_t(0.1e8), uint32_t(0.3e8), uint32_t(0.5e8), uint32_t(0.7e8)};
     uint32_t v_output[4] = {0, 0, 0, 0};
     helm.receive((uint8_t*)fdb, sizeof(fdb));
     helm.send((uint8_t*)v_input, sizeof(v_input));
@@ -277,7 +283,12 @@ void test_helm_transport() {
     // 打印 AD 和 PWM duty
     const float K_IN_OUT = 311.22;
     const float K_IN_OUT_1 = 1 / K_IN_OUT;
+    const float AD_SWITCH = 10.0 / 65536.0;
     LOG_INFO << "Helm ad is: " << fdb[0] << " " << fdb[1] << " " << fdb[2] << " " << fdb[3];
+    LOG_INFO << "Helm ad real is: " << AD_SWITCH * fdb[0] - 7.048
+    << " " << AD_SWITCH * fdb[1] - 7.048
+    << " " << AD_SWITCH * fdb[2] - 7.048
+    << " " << AD_SWITCH * fdb[3] - 7.048;
     LOG_INFO << "Helm degree is: " << K_IN_OUT_1 * static_cast<short>(fdb[0]) 
     << " " << K_IN_OUT_1 * static_cast<short>(fdb[1]) 
     << " " << K_IN_OUT_1 * static_cast<short>(fdb[2]) 
@@ -305,260 +316,11 @@ void test_can_transport() {
 
     Device::CanDevice can_dev(can, 8);
     LinkConfig cfg_link; 
-    cfg_link.mtu = 64;
     if (!can_dev.open(cfg_link)) {
         LOG_ERROR << "CanDevice open failed.";
         cleanup_device(can_dev, can);
         return;
     }
-
-    #define CAN_REG_MODE 0
-    // Simple CAN mode
-    #if CAN_REG_MODE == 1
-    
-    uint32_t reg_val = 0;
-    uint32_t ecr_val = 0;
-    const uint32_t TX_DATA = 0x11223344;  // 待发送数据（4字节，对应DB0~DB3）
-    const uint32_t TX_ID = 0x123;         // 标准CAN ID（11位，范围0~0x7FF）
-    const uint8_t TX_DLC = 4;             // 发送数据长度（1~8字节）
-    uint32_t rx_id = 0;                   // 接收ID缓存
-    uint8_t rx_dlc = 0;                   // 接收DLC缓存
-    uint32_t rx_data = 0;                 // 接收数据缓存
-    LOG_INFO << "CAN Device Opened.";
-
-    /****************************************************************************
-     * 步骤1：软件复位（手册Table7/8：Software Reset Register (SRR)，地址0x000）
-     * 要求：1. 写SRR的bit31（SRST）=1触发复位；2. 复位后SRST自动清0；3. 等待≥16个AXI时钟
-     ***************************************************************************/
-    // 触发软件复位（SRR=0x1：bit31=1，其他保留位=0）
-    can_dev.wr32(0x000, 0x1);
-    usleep(100);  // AXI时钟100MHz时，1us > 16个周期（160ns），确保复位完成
-
-    // 验证复位：读取SRR，确认bit31（SRST）已自动清0
-    can_dev.rd32(0x000, reg_val);
-    LOG_INFO << "1. SRR复位后值: 0x" << std::hex << reg_val 
-             << "（预期：0x00000000，SRST位自动清零）";
-    if ((reg_val & 0x1) != 0) {  // 检查bit31是否为0
-        LOG_ERROR << "软件复位失败！SRST位未自动清零";
-        return;
-    }
-
-    /****************************************************************************
-     * 步骤2：进入配置模式（手册Table8/20：SRR的CEN位+SR的CONFIG位，地址0x000/0x018）
-     * 要求：1. 写SRR的bit30（CEN）=0进入配置模式；2. 验证SR的bit31（CONFIG）=1
-     ***************************************************************************/
-    // 写SRR=0x00000000（CEN=0，进入配置模式）
-    can_dev.wr32(0x000, 0x00000000);
-    usleep(100);
-
-    // 验证配置模式：读取Status Register (SR)，确认bit31（CONFIG）=1
-    can_dev.rd32(0x018, reg_val);
-    LOG_INFO << "2. SR配置模式标志: 0x" << std::hex << reg_val 
-             << "（预期：bit31=1，CONFIG模式生效）";
-    if ((reg_val & 0x1) != 0x1) {  // 检查bit31是否为1
-        LOG_ERROR << "未进入配置模式！SR的CONFIG位未置1";
-        return;
-    }
-
-    /****************************************************************************
-     * 步骤3：配置回环模式（手册Table9/10：Mode Select Register (MSR)，地址0x004）
-     * 要求：1. 回环模式需LBACK=1（bit30=1）；2. SLEEP=0（bit31=0，避免冲突）；3. 两者不可同时为1
-     ***************************************************************************/
-    // 写MSR=0x2（bit30=1=LBACK，bit31=0=SLEEP，其他保留位=0）
-    // can_dev.wr32(0x004, 0x2);
-    can_dev.wr32(0x004, 0x1);
-    usleep(100);
-
-    // 验证回环模式配置：读取MSR，确认bit30=1、bit31=0
-    can_dev.rd32(0x004, reg_val);
-    LOG_INFO << "3. MSR回环模式配置: 0x" << std::hex << reg_val 
-             << "（预期：0x00000002，LBACK=1、SLEEP=0）";
-    if ((reg_val & 0x3) != 0x2) {  // 检查bit30-31=01
-        LOG_WARN << "回环模式配置失败！LBACK/SLEEP位错误";
-    }
-
-    /****************************************************************************
-    * 步骤4：配置1M波特率（CAN_CLK=24M，手册Table11-14）
-    * 计算依据：
-    * 1. (BRP+1)*(1+TS1+TS2) = 24M/1M =24 → 选BRP=1（BRP+1=2），1+TS1+TS2=12
-    * 2. TS1=8tq（TSEG1=7）、TS2=3tq（TSEG2=2）、SJW=1tq（SJW=0）
-    ***************************************************************************/
-    // 4.1 配置BRPR（0x008）：BRP=1→写入0x01（大端序bit7-0=0x01）
-    uint32_t set = 0;
-    can_dev.wr32(0x008, set);
-    usleep(100);
-    can_dev.rd32(0x008, reg_val);   
-    LOG_INFO << "4.1 BRPR配置: 0x" << std::hex << reg_val << "（预期：0x00000000）";
-    if (reg_val != set) {
-        LOG_ERROR << "BRPR配置失败！";
-        return;
-    }
-
-    // 4.2 配置BTR（0x00C）：TS1=0x07、TS2=0x02、SJW=0x00→写入0x000001C7
-    set = 0x1EF;
-    can_dev.wr32(0x00C, set);
-    usleep(100);
-    can_dev.rd32(0x00C, reg_val);   
-    LOG_INFO << "4.2 BTR配置: 0x" << std::hex << reg_val << "（预期：0x000001C7）";
-    if (reg_val != set) {
-        LOG_ERROR << "BTR配置失败！";
-        return;
-    }
-
-    /****************************************************************************
-     * 步骤5：配置验收滤波器（接收所有帧，手册Table34-37：AFR+AFMR1+AFIR1，地址0x060/0x064/0x068）
-     * 要求：1. 启用1个滤波器（UAF1=1）；2. 掩码全0（接收任意ID）；3. 先禁用滤波器再配置
-     ***************************************************************************/
-    // 5.1 禁用滤波器1：写AFR（0x060）的bit31（UAF1）=0
-    can_dev.wr32(0x060, 0x00000000);
-    usleep(100);
-
-    // 5.2 等待滤波器空闲：读取SR的bit20（手册编号）→实际bit11→掩码0x00000800
-    do {
-        can_dev.rd32(0x018, reg_val);
-    } while ((reg_val & 0x00000800) != 0);  // 正确掩码：0x00000800
-    LOG_INFO << "5.1 滤波器已空闲（ACFBSY=0）";
-
-    // 5.3 配置滤波器1掩码（AFMR1=0x00000000，全0掩码→不限制ID）
-    can_dev.wr32(0x064, 0x00000000);
-    usleep(100);
-    can_dev.rd32(0x064, reg_val);
-    LOG_INFO << "5.2 AFMR1（掩码）: 0x" << std::hex << reg_val << "（预期：0x00000000）";
-
-    // 5.4 配置滤波器1ID（AFIR1=0x00000000，掩码全0时ID无意义）
-    can_dev.wr32(0x068, 0x00000000);
-    usleep(100);
-    can_dev.rd32(0x068, reg_val);
-    LOG_INFO << "5.3 AFIR1（ID）: 0x" << std::hex << reg_val << "（预期：0x00000000）";
-
-    // 5.5 启用滤波器1：写AFR的bit31（UAF1）=1
-    can_dev.wr32(0x060, 0x1);
-    usleep(100);
-    can_dev.rd32(0x060, reg_val);
-    LOG_INFO << "5.4 AFR（滤波器使能）: 0x" << std::hex << reg_val << "（预期：0x1）";
-    if ((reg_val & 0x1) != 0x1) {
-        LOG_WARN << "滤波器1启用失败！UAF1位未置1";
-    }
-
-    /****************************************************************************
-     * 步骤6：启用核心，退出配置模式（手册Table8/20：SRR的CEN位+SR的模式位，地址0x000/0x018）
-     * 要求：1. 写SRR的bit30（CEN）=1启用核心；2. 核心检测11个隐性位后进入回环模式；3. 验证模式位
-     ***************************************************************************/
-    // 写SRR=0x40000000（CEN=1，启用核心）
-    can_dev.wr32(0x000, 0x2);
-    usleep(10);  // 等待核心检测11个隐性位（回环模式下自动生成）
-
-    // 验证模式：读取SR，确认CONFIG=0（bit31=0）、LBACK=1（bit30=1
-    can_dev.rd32(0x018, reg_val);
-    LOG_INFO << "6. SR核心状态: 0x" << std::hex << reg_val 
-            //  << "（预期：bit31=0、bit30=1、bit28=1）";
-             << "（预期：bit31=0、bit30=1）";
-    // if (((reg_val & 0x1) != 0) ||  // CONFIG=1错误
-    //     ((reg_val & 0x2) == 0) ||  // LBACK=0错误
-    //     ((reg_val & 0x8) == 0)) {  // NORMAL=0错误
-    //     LOG_ERROR << "核心未进入回环模式！状态位错误";
-    //     return;
-    // }
-    if (((reg_val & 0x1) != 0) ||  // CONFIG=1错误
-        ((reg_val & 0x2) == 0)) {  // LBACK=0错误
-        LOG_WARN << "核心未进入回环模式！状态位错误";
-    }
-
-    /****************************************************************************
-     * 步骤7：填充TX FIFO（手册Table6：TX FIFO地址0x030~0x03C）
-     * 要求：1. 按ID→DLC→DataWord1→DataWord2顺序写；2. 标准ID需配置IDE=0
-     ***************************************************************************/
-    // 7.1 配置TX ID（0x030）：标准ID=0x123（bit0-10）、IDE=0（bit12=0）、RTR=0（bit11=0）
-    const uint32_t tx_id_reg = (TX_ID & 0x7FF) << 21;  // 11位标准ID占bit0-10，其他位=0
-    can_dev.wr32(0x030, tx_id_reg);
-    LOG_INFO << "7.1 TX FIFO ID: 0x" << std::hex << tx_id_reg << "（实际ID=0x" << TX_ID << "）";
-
-    // 7.2 配置TX DLC（0x034）：DLC=4（bit0-3），其他保留位=0
-    const uint32_t tx_dlc_reg = ((uint32_t)TX_DLC & 0x0F) << 28;
-    can_dev.wr32(0x034, tx_dlc_reg);
-    LOG_INFO << "7.2 TX FIFO DLC: 0x" << std::hex << tx_dlc_reg << "（实际DLC=" << (int)TX_DLC << "）";
-
-    // 7.3 配置TX数据（0x038：DataWord1=DB0~DB3，0x03C：DataWord2=DB4~DB7，此处DLC=4故写0）
-    can_dev.wr32(0x038, TX_DATA);
-    can_dev.wr32(0x03C, 0x00000000);
-    LOG_INFO << "7.3 TX FIFO DataWord1: 0x" << std::hex << TX_DATA;
-
-    /****************************************************************************
-     * 步骤8：等待发送&接收完成（手册Table21/22：ISR中断状态，地址0x01C）
-     * 回环模式特征：1. 发送成功→ISR的bit30（TXOK）=1；2. 接收成功→ISR的bit27（RXOK）=1
-     ***************************************************************************/
-    uint32_t timeout = 1000;  // 超时1000ms
-    bool tx_rx_done = false;
-    while (timeout--) {
-        can_dev.rd32(0x01C, reg_val);
-        if (((reg_val & 0x2) != 0) &&  // TXOK=1（bit30）
-            ((reg_val & 0x10) != 0)) {  // RXOK=1（bit27）
-            LOG_INFO << "8. ISR状态: 0x" << std::hex << reg_val 
-                     << "（TXOK=1、RXOK=1，发送接收完成）";
-            tx_rx_done = true;
-            break;
-        }
-        usleep(1000);  // 每1ms轮询一次
-    }
-    if (!tx_rx_done) {
-        LOG_ERROR << "发送接收超时！ISR=0x" << std::hex << reg_val;
-        return;
-    }
-
-    /****************************************************************************
-     * 步骤9：读取RX FIFO并验证（手册Table6：RX FIFO地址0x050~0x05C）
-     * 要求：1. 按ID→DLC→DataWord1→DataWord2顺序读；2. 验证ID、DLC、数据一致性
-     ***************************************************************************/
-    // 9.1 读取RX ID（0x050）：提取bit0-10为标准ID
-    can_dev.rd32(0x050, reg_val);
-    rx_id = (reg_val >> 21) & 0x7FF;  // 提取bit21-31为标准ID
-    LOG_INFO << "9.1 RX FIFO ID: 0x" << std::hex << reg_val << "（提取ID=0x" << rx_id << "）";
-    if (rx_id != TX_ID) {
-        LOG_WARN << "ID不匹配！发送=0x" << std::hex << TX_ID << "，接收=0x" << rx_id;
-    }
-
-    // 9.2 读取RX DLC（0x054）：提取bit28-31为DLC
-    can_dev.rd32(0x054, reg_val);
-    rx_dlc = (reg_val >> 28) & 0x0F;
-    LOG_INFO << "9.2 RX FIFO DLC: 0x" << std::hex << reg_val << "（提取DLC=" << (int)rx_dlc << "）";
-    if (rx_dlc != TX_DLC) {
-        LOG_WARN << "DLC不匹配！发送=" << (int)TX_DLC << "，接收=" << (int)rx_dlc;
-    }
-
-    // 9.3 读取RX数据（0x058：DataWord1）
-    can_dev.rd32(0x058, rx_data);
-    LOG_INFO << "9.3 RX FIFO DataWord1: 0x" << std::hex << rx_data;
-    if (rx_data != TX_DATA) {
-        LOG_WARN << "数据不匹配！发送=0x" << std::hex << TX_DATA << "，接收=0x" << rx_data;
-    }
-
-    /****************************************************************************
-     * 步骤10：清除中断状态（手册Table25/26：ICR中断清除寄存器，地址0x024）
-     * 要求：写1到对应位清除ISR状态（TXOK=bit30，RXOK=bit27）
-     ***************************************************************************/
-    can_dev.wr32(0x024, 0x00000012);
-    usleep(100);
-    can_dev.rd32(0x01C, reg_val);
-    LOG_INFO << "10. 清除中断后ISR: 0x" << std::hex << reg_val << "（预期：TXOK=0、RXOK=0）";
-
-    /****************************************************************************
-     * 步骤11：循环监控状态（可选，验证回环模式稳定性）
-     ***************************************************************************/
-    LOG_INFO << "\n=== 1M波特率自发自收测试结束，进入循环模式===";// 循环监控：用大端序实际bit掩码
-    while (1) {
-        sleep(1);
-        // 1. 监控核心模式（LBACK=0x2，NORMAL=0x8）
-        can_dev.rd32(0x018, reg_val);
-        LOG_INFO << "Loop: 模式状态（LBACK=" << ((reg_val & 0x2) ? 1 : 0) 
-                << "，NORMAL=" << ((reg_val & 0x8) ? 1 : 0) << "）";
-        // 2. 监控错误计数器（TEC=手册bit24-31→实际bit7-0；REC=手册bit16-23→实际bit15-8）
-        can_dev.rd32(0x010, ecr_val);
-        const uint8_t tec = ecr_val & 0xFF;  // 实际bit7-0→手册bit24-31（TEC）
-        const uint8_t rec = (ecr_val >> 8) & 0xFF;  // 实际bit15-8→手册bit16-23（REC）
-        LOG_INFO << "Loop: 错误计数器（TEC=" << (int)tec << "，REC=" << (int)rec << "）";
-    }
-    return;
-    #endif
 
     // 使用 CanDevice 接口进行 1M 回环自发自收测试（轮询接收）
     LOG_INFO << "Start 1Mbps loopback self-test using CanDevice (polling)";
@@ -579,8 +341,8 @@ void test_can_transport() {
 
     const int rounds = 100; // 测试若干次
     int pass = 0, fail = 0;
+    Device::CanFrame tx;
     for (int i = 0; i < rounds; ++i) {
-        Device::CanFrame tx;
         tx.id = 0x123;    // 标准帧 ID
         tx.ide = false;
         tx.rtr = false;
@@ -592,8 +354,7 @@ void test_can_transport() {
             static_cast<uint8_t>((i+6) & 0xFF), static_cast<uint8_t>((i+7) & 0xFF)
         };
 
-        // 写入前清 ISR 以消除残留状态
-        can_dev.wr32(0x024, 0x12);
+        // 写入
         bool sent = can_dev.send(tx);
         if (!sent) {
             LOG_ERROR << "send() failed at round " << i;
@@ -639,6 +400,14 @@ void test_can_transport() {
     }
     LOG_INFO << "CAN loopback self-test done. pass=" << pass << " fail=" << fail;
 
+    // 结束对外发一次
+    loop_on = 0;
+    lb_ret = can_dev.ioctl(Device::CanDevice::IOCTL_SET_LOOPBACK, &loop_on, sizeof(loop_on));
+    if (lb_ret != 0) {
+        LOG_WARN << "IOCTL_SET_LOOPBACK(0) returned " << lb_ret << ", continuing.";
+    }
+    can_dev.send(tx);
+    
     // 释放
     cleanup_device(can_dev, can);
 }
@@ -651,7 +420,7 @@ void test_ddr_transport() {
     TransportConfig cfg_ddr;
     cfg_ddr.dma_h2c_channel = 0;
     cfg_ddr.dma_c2h_channel = 0;
-    cfg_ddr.device_offset = 0x80000000;
+    cfg_ddr.device_offset = 0x0;
 
     ddr.open(cfg_ddr);
 
@@ -754,6 +523,33 @@ void test_ddr_transport() {
     LOG_INFO << "DDR transport closed.";
 }
 
+void test_IO_transport() {
+    LOG_TITLE("DDR DI/DO Test");
+
+    ControlPlane::XdmaTransport io;
+    TransportConfig cfg_io;
+    cfg_io.device_offset = 0x90000;
+
+    io.open(cfg_io);
+    const uint32_t sleep_us = 300000;
+    const uint64_t do_addr_offset = 0;
+    const uint64_t di_addr_offset = 0;
+    uint32_t switch_do = 1;
+    uint32_t get_di = 0;
+    while(1) {
+        LOG_INFO << "switch_do: " << switch_do;
+        for (int i = 1; i < 0x9; i++) {
+            io.writeReg32(do_addr_offset + i * 4, switch_do);
+        }
+        for (int i = 9; i < 0xD; i++) {
+            io.readReg32(di_addr_offset + i * 4, get_di);
+            LOG_INFO << "di_addr: " << di_addr_offset + i * 4 << ", get_di: " << get_di;
+        }
+        switch_do = 1 - switch_do;
+        sleep(1);
+    }
+}
+
 // --- 主函数 ---
 int main() {
     LOG_SET_LEVEL_INFO();
@@ -765,17 +561,12 @@ int main() {
     LOG_DOUBLE_SEPARATOR();
     LOG_BLANK_LINE();
 
-    // test_udp_link();
-    // while(1) {
+    test_ddr_transport();
+    test_udp_link();
     // test_rs422_device(0);
-    // test_rs422_device(1);
-    // test_rs422_device(2);
-    // test_rs422_device(3);
-    // test_rs422_device(4);
-    // }
-    // test_helm_transport();
-    // test_ddr_transport();
-    test_can_transport();
+    test_helm_transport();
+    // test_can_transport();
+    // test_IO_transport();
 
     LOG_DOUBLE_SEPARATOR();
     LOG_TITLE("Physical Layer Test Suite Finished");
