@@ -2,6 +2,7 @@
 build/
 reference/
 .cache/
+.trae/
 docs/tmp/
 buildlog.txt
 

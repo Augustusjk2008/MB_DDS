@@ -6,6 +6,7 @@
 
 #include "MB_DDF/PhysicalLayer/Device/TransportLinkAdapter.h"
 #include "MB_DDF/PhysicalLayer/ControlPlane/IDeviceTransport.h"
+#include <cstdint>
 
 namespace MB_DDF {
 namespace PhysicalLayer {
@@ -36,6 +37,8 @@ public:
         uint8_t tx_head_hi{0};
         uint8_t rx_head_lo{0};
         uint8_t rx_head_hi{0};
+        uint8_t lpb{0};
+        uint8_t intr{0};
     };
 
     bool open(const LinkConfig& cfg) override;

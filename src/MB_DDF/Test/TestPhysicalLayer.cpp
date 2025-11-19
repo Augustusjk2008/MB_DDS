@@ -2,6 +2,7 @@
  * @file TestPhysicalLayer.cpp
  * @brief 物理层 UDP 与 RS422-XDMA 适配器端到端测试
  */
+#include <cstddef>
 #include <cstdint>
 #include <unistd.h>
 #include <vector>
@@ -152,7 +153,7 @@ void test_rs422_device(int num) {
     ControlPlane::XdmaTransport transport;
     TransportConfig cfg_tp;
     cfg_tp.device_path = "/dev/xdma0";
-    cfg_tp.event_number = num;
+    cfg_tp.event_number = 0;
     cfg_tp.device_offset = 0x10000 * num;
     // cfg_tp.device_offset = 0x00000; // 3号引信
     // cfg_tp.device_offset = 0x10000; // 
@@ -210,6 +211,8 @@ void test_rs422_device(int num) {
         .tx_head_hi = 0x55,
         .rx_head_lo = 0xAA,
         .rx_head_hi = 0x55,
+        .lpb = 0xAF,    // AF = 回环
+        .intr = 0xAE,   // AE = 自控中断
     };
     Device::Rs422Device::Config cfg_return;
     int ioctl_ret = adapter_422.ioctl(Device::Rs422Device::IOCTL_CONFIG, 
@@ -224,24 +227,32 @@ void test_rs422_device(int num) {
     }
     adapter_422.receive(buf_r.data(), buf.size(), 10000);
     LOG_INFO << "Clear old data.";
+    // for (int i=0; i<10; i++) {
+    //     adapter_422.send(buf.data(), test_mtu);
+    //     int received = adapter_422.receive(buf_r.data(), buf.size(), 3000000);
+    //     if (received > 0) {
+    //         LOG_INFO << "Received " << received << " bytes.";
+    //     } else {
+    //         LOG_ERROR << "receive() timeout/failed. ret=" << received;
+    //     }
+    // }
     MB_DDF::Timer::ChronoHelper::timingAverage(100, [&]() {
         static bool err = false;
         if (err) return;
         buf.data()[1] += 1;
         adapter_422.send(buf.data(), test_mtu);
-        usleep(10000);
-        // int received = adapter_422.receive(buf_r.data(), buf.size(), 100000);
-        // if (received != test_mtu) {
-        //     LOG_ERROR << "receive() failed or timed out. ret=" << received;
-        //     // err = true;
-        // } else if (memcmp(buf.data(), buf_r.data(), received) != 0) {
-        //     LOG_ERROR << "Received data does not match sent data.";
-        //     // 打印数据
-        //     for (int i=0; i<20; i++) {
-        //         LOG_ERROR << "Data " << i << " is: " << (uint32_t)(buf.data()[i]) << " and " << (uint32_t)(buf_r.data()[i]);
-        //     }
-        //     err = true;
-        // }
+        int received = adapter_422.receive(buf_r.data(), buf.size(), 100000);
+        if (received != test_mtu) {
+            LOG_ERROR << "receive() failed or timed out. ret=" << received;
+            err = true;
+        } else if (memcmp(buf.data(), buf_r.data(), received) != 0) {
+            LOG_ERROR << "Received data does not match sent data.";
+            // 打印数据
+            for (int i=0; i<20; i++) {
+                LOG_ERROR << "Data " << i << " is: " << (uint32_t)(buf.data()[i]) << " and " << (uint32_t)(buf_r.data()[i]);
+            }
+            err = true;
+        }
     });
 
     // 7. 关闭
@@ -264,9 +275,11 @@ void test_helm_transport() {
     Device::HelmDevice::Config ctl_helm = {
         .pwm_freq = 4000,
         .out_enable = 0xFFFF,
-        .ad_filter = 1,
+        .ad_filter = 0,
     };
     helm.ioctl(Device::HelmDevice::IOCTL_HELM, &ctl_helm, sizeof(ctl_helm));
+
+    while(1) {
     // 舵机 Ad 读取、PWM duty 设置
     uint16_t fdb[4];
     uint32_t v_input[4] = {uint32_t(0.1e8), uint32_t(0.3e8), uint32_t(0.5e8), uint32_t(0.7e8)};
@@ -283,12 +296,13 @@ void test_helm_transport() {
     // 打印 AD 和 PWM duty
     const float K_IN_OUT = 311.22;
     const float K_IN_OUT_1 = 1 / K_IN_OUT;
-    const float AD_SWITCH = 10.0 / 65536.0;
+    const float AD_SWITCH = -10.0 / 65536.0;
+    const float OFFSET = -12.048;
     LOG_INFO << "Helm ad is: " << fdb[0] << " " << fdb[1] << " " << fdb[2] << " " << fdb[3];
-    LOG_INFO << "Helm ad real is: " << AD_SWITCH * fdb[0] - 7.048
-    << " " << AD_SWITCH * fdb[1] - 7.048
-    << " " << AD_SWITCH * fdb[2] - 7.048
-    << " " << AD_SWITCH * fdb[3] - 7.048;
+    LOG_INFO << "Helm ad real is: " << AD_SWITCH * fdb[0] - OFFSET
+    << " " << AD_SWITCH * fdb[1] - OFFSET
+    << " " << AD_SWITCH * fdb[2] - OFFSET
+    << " " << AD_SWITCH * fdb[3] - OFFSET;
     LOG_INFO << "Helm degree is: " << K_IN_OUT_1 * static_cast<short>(fdb[0]) 
     << " " << K_IN_OUT_1 * static_cast<short>(fdb[1]) 
     << " " << K_IN_OUT_1 * static_cast<short>(fdb[2]) 
@@ -296,6 +310,11 @@ void test_helm_transport() {
     LOG_INFO << "Helm pwm set : " << v_input[0] << " " << v_input[1] << " " << v_input[2] << " " << v_input[3];
     LOG_INFO << "Helm pwm get : " << v_output[0] << " " << v_output[1] << " " << v_output[2] << " " << v_output[3];
 
+    uint32_t status;
+    tp_helm.readReg32(0xFF*4, status);
+    LOG_INFO << "Helm status is: " << status;
+    sleep(1);
+    }
     // 释放
     cleanup_device(helm, tp_helm);
 }
@@ -308,7 +327,7 @@ void test_can_transport() {
     TransportConfig cfg_can;
     cfg_can.device_path  = "/dev/xdma0"; // 必须设置设备路径以映射寄存器与事件设备
     cfg_can.device_offset = 0x50000;      // CAN 核心在 user 空间的偏移
-    cfg_can.event_number = 5;             // 事件设备编号（当前未使用中断，但保持一致）
+    cfg_can.event_number = 5;             // 事件设备编号
     if (!can.open(cfg_can)) {
         LOG_ERROR << "XdmaTransport open failed for CAN (check device nodes).";
         return;
@@ -339,10 +358,10 @@ void test_can_transport() {
         LOG_WARN << "IOCTL_SET_BIT_TIMING(1M) returned " << bt_ret << ", open defaults to 1M.";
     }
 
-    const int rounds = 100; // 测试若干次
     int pass = 0, fail = 0;
-    Device::CanFrame tx;
-    for (int i = 0; i < rounds; ++i) {
+    Device::CanFrame tx;    
+    MB_DDF::Timer::ChronoHelper::timingAverage(10000, [&]() {
+        static int i = 0;
         tx.id = 0x123;    // 标准帧 ID
         tx.ide = false;
         tx.rtr = false;
@@ -359,29 +378,31 @@ void test_can_transport() {
         if (!sent) {
             LOG_ERROR << "send() failed at round " << i;
             ++fail;
-            continue;
+            return;
         }
 
         // 轮询接收：无 event 中断，轮询 receive(CanFrame&)
         Device::CanFrame rx;
         int32_t got = -1;
         int tries = 0;
-        for (; tries < 100; ++tries) { // 最长约100ms
-            got = can_dev.receive(rx);
-            if (got > 0) break;
-            // 也轮询 ISR 位来辅助判断是否该继续等
-            uint32_t isr = 0;
-            can_dev.rd32(0x01C, isr);
-            if ((isr & 0x10) != 0) {
-                // 有 RXOK 但读取失败，稍作等待再读
-                usleep(500);
-            }
-            usleep(1000); // 1ms 间隔
-        }
+        got = can_dev.receive(rx, 2000);
+        // while (1) {
+        // for (; tries < 100000; ++tries) { // 最长约100ms
+        //     got = can_dev.receive(rx);
+        //     if (got > 0) break;
+        //     // 也轮询 ISR 位来辅助判断是否该继续等
+        //     uint32_t isr = 0;
+        //     can_dev.rd32(0x01C, isr);
+        //     if ((isr & 0x10) != 0) {
+        //         // 有 RXOK 但读取失败，稍作等待再读
+        //         usleep(15);
+        //     }
+        //     usleep(10); // 1ms 间隔
+        // }
         if (got <= 0) {
             LOG_ERROR << "receive() timeout/failed at round " << i << " ret=" << got;
             ++fail;
-            continue;
+            return;
         }
 
         bool ok = (rx.id == tx.id) && (rx.dlc == tx.dlc) && (rx.data == tx.data);
@@ -397,7 +418,8 @@ void test_can_transport() {
         } else {
             ++pass;
         }
-    }
+        ++i;
+    });
     LOG_INFO << "CAN loopback self-test done. pass=" << pass << " fail=" << fail;
 
     // 结束对外发一次
@@ -524,14 +546,13 @@ void test_ddr_transport() {
 }
 
 void test_IO_transport() {
-    LOG_TITLE("DDR DI/DO Test");
+    LOG_TITLE("DI/DO Test");
 
     ControlPlane::XdmaTransport io;
     TransportConfig cfg_io;
     cfg_io.device_offset = 0x90000;
 
     io.open(cfg_io);
-    const uint32_t sleep_us = 300000;
     const uint64_t do_addr_offset = 0;
     const uint64_t di_addr_offset = 0;
     uint32_t switch_do = 1;
@@ -550,6 +571,33 @@ void test_IO_transport() {
     }
 }
 
+void test_any_transport() {
+    LOG_TITLE("PCIE-AXI-lite Test");
+
+    ControlPlane::XdmaTransport pcie;
+    TransportConfig cfg_pcie;
+    cfg_pcie.device_offset = 0x80000;
+
+    pcie.open(cfg_pcie);
+    const uint64_t do_addr_offset = 0;
+    const uint64_t di_addr_offset = 0;
+    const size_t data_size = 64;
+    uint32_t test_set[data_size] = {0}, test_get[data_size] = {0};
+    for (int i = 0; i < data_size; i++) {
+        test_set[i] = i * 5;
+    }
+    while(1) {
+        for (int i = 0; i < data_size; i++) {
+            pcie.writeReg32(do_addr_offset + i * 4, test_set[i]);
+        }
+        for (int i = 0; i < data_size; i++) {
+            pcie.readReg32(di_addr_offset + i * 4, test_get[i]);
+            LOG_INFO << "rd_wr_addr: " << di_addr_offset + i * 4 << ", get: " << test_get[i];
+        }
+        sleep(1);
+    }
+}
+
 // --- 主函数 ---
 int main() {
     LOG_SET_LEVEL_INFO();
@@ -561,12 +609,13 @@ int main() {
     LOG_DOUBLE_SEPARATOR();
     LOG_BLANK_LINE();
 
-    test_ddr_transport();
-    test_udp_link();
-    // test_rs422_device(0);
-    test_helm_transport();
-    // test_can_transport();
+    test_rs422_device(0);
+    // test_ddr_transport();
+    // test_udp_link();
+    test_can_transport();
+    // test_helm_transport();
     // test_IO_transport();
+    // test_any_transport();
 
     LOG_DOUBLE_SEPARATOR();
     LOG_TITLE("Physical Layer Test Suite Finished");

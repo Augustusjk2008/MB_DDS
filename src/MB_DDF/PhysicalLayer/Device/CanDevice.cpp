@@ -45,8 +45,10 @@ bool CanDevice::open(const LinkConfig& cfg) {
         return false;
     }
     // 使能发送/接收完成状态位，并清除可能的旧中断位
-    (void)wr32(XCAN_IER_OFFSET, XCAN_IER_TXOK_MASK | XCAN_IER_RXOK_MASK);
-    (void)wr32(XCAN_ICR_OFFSET, XCAN_ICR_TXOK_MASK | XCAN_ICR_RXOK_MASK);
+    // (void)wr32(XCAN_IER_OFFSET, XCAN_IER_TXOK_MASK | XCAN_IER_RXOK_MASK);
+    // (void)wr32(XCAN_ICR_OFFSET, XCAN_ICR_TXOK_MASK | XCAN_ICR_RXOK_MASK);
+    (void)wr32(XCAN_IER_OFFSET, XCAN_IER_RXOK_MASK);
+    (void)wr32(XCAN_ICR_OFFSET, 0xFFFFFFFF);
     return true;
 }
 

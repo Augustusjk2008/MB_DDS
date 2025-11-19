@@ -349,6 +349,21 @@ if(BUILD_TESTS)
     endforeach()
 endif()
 
+# UpgradeAndTest 可执行程序
+# file(GLOB_RECURSE UAT_SOURCES CONFIGURE_DEPENDS
+#     "src/UpgradeAndTest/*.cpp"
+# )
+# add_executable(UpgradeAndTest ${UAT_SOURCES})
+# target_include_directories(UpgradeAndTest PRIVATE
+#     ${CMAKE_CURRENT_SOURCE_DIR}
+#     ${CMAKE_CURRENT_SOURCE_DIR}/src
+# )
+# if(BUILD_LIBS)
+#     target_link_libraries(UpgradeAndTest PRIVATE MB_DDF_PHYSICAL MB_DDF_CORE MB_DDF_TIMER pthread rt)
+# else()
+#     target_link_libraries(UpgradeAndTest PRIVATE pthread rt)
+# endif()
+
 # 设置不同构建类型的编译选项
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     # Debug 构建选项 - 应用到库和测试程序

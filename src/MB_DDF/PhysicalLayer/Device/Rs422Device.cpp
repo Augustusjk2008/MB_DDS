@@ -29,7 +29,8 @@ static constexpr uint64_t RHH_reg  = 0x207; // 接收头高字节（8位）
 // static constexpr uint64_t TTH_reg  = 0x209; // 发送尾高字节（8位，可选）
 // static constexpr uint64_t RTL_reg  = 0x20A; // 接收尾低字节（8位，可选）
 // static constexpr uint64_t RTH_reg  = 0x20B; // 接收尾高字节（8位，可选）
-static constexpr uint64_t EVT_reg  = 0x20C; // 事件宽度寄存器（8位）
+static constexpr uint64_t LPB_reg  = 0x20C; // 回环模式寄存器（8位）
+static constexpr uint64_t INT_reg  = 0x20D; // 中断模式寄存器（8位）
 
 static constexpr uint64_t CMD_reg  = 0x300; // 命令/状态寄存器（写入命令用 32 位，读取状态用 8 位）
 static constexpr uint64_t STU_reg  = 0x300; // 状态寄存器（与 CMD 同址，读 8 位）
@@ -135,7 +136,7 @@ int32_t Rs422Device::receive(uint8_t* buf, uint32_t buf_size) {
     if (!rd32(STU_reg, stu)) return -1;
     if (!rd32(ERR_reg, err)) return -1;
     if ((stu & STU_RX_READY_MASK) == 0) {
-        // 无数据
+        // 无数据可读
         return 0;
     }
     if (err != 0) {
@@ -233,8 +234,9 @@ int Rs422Device::ioctl(uint32_t opcode, const void* in, size_t in_len, void* out
         const Config* cfg = reinterpret_cast<const Config*>(in);
         Config* cfg_out = reinterpret_cast<Config*>(out);
 
-        // 配置中断宽度
-        if (!wr8(EVT_reg, 125))  { return -EIO; } 
+        // 配置中断和回环
+        if (!wr8(LPB_reg, cfg->lpb))  { return -EIO; } 
+        if (!wr8(INT_reg, cfg->intr))  { return -EIO; } 
 
         // 参考 rs422_config 的寄存器写序，并在每次写后短暂延时
         // UCR: UART 控制；MCR: 模式控制；BRSR: 波特率；ICR: 状态控制
@@ -250,14 +252,15 @@ int Rs422Device::ioctl(uint32_t opcode, const void* in, size_t in_len, void* out
         if (!wr8(RHH_reg, cfg->rx_head_hi)) { return -EIO; } 
 
         LOGI("rs422", "ioctl", opcode,
-             "configured ucr=0x%02x mcr=0x%02x brsr=0x%02x icr=0x%02x tx_head=[0x%02x,0x%02x] rx_head=[0x%02x,0x%02x]",
-             cfg->ucr, cfg->mcr, cfg->brsr, cfg->icr,
+             "configured ucr=0x%02x mcr=0x%02x brsr=0x%02x icr=0x%02x lpb=0x%02x intr=0x%02x tx_head=[0x%02x,0x%02x] rx_head=[0x%02x,0x%02x]",
+             cfg->ucr, cfg->mcr, cfg->brsr, cfg->icr, cfg->lpb, cfg->intr,
              cfg->tx_head_lo, cfg->tx_head_hi, cfg->rx_head_lo, cfg->rx_head_hi);
 
         // 回读
-        uint32_t ret1, ret2;
+        uint32_t ret1, ret2, ret3;
         if (!rd32(UCR_reg, ret1)) { return -EIO; } 
         if (!rd32(THL_reg, ret2)) { return -EIO; } 
+        if (!rd32(LPB_reg, ret3)) { return -EIO; } 
 
         // 读取
         if (out != nullptr && out_len >= sizeof(Config)) {
@@ -271,10 +274,14 @@ int Rs422Device::ioctl(uint32_t opcode, const void* in, size_t in_len, void* out
             cfg_out->rx_head_lo = ret2 >> 16 & 0xFF;
             cfg_out->rx_head_hi = ret2 >> 24 & 0xFF;
 
+            cfg_out->lpb = ret3 & 0xFF;
+            cfg_out->intr = ret3 >> 8 & 0xFF;
+
             LOGI("rs422", "ioctl", opcode,
-                "read back  ucr=0x%02x mcr=0x%02x brsr=0x%02x icr=0x%02x tx_head=[0x%02x,0x%02x] rx_head=[0x%02x,0x%02x]",
-                cfg_out->ucr, cfg_out->mcr, cfg_out->brsr, cfg_out->icr,
+                "read back  ucr=0x%02x mcr=0x%02x brsr=0x%02x icr=0x%02x lpb=0x%02x intr=0x%02x tx_head=[0x%02x,0x%02x] rx_head=[0x%02x,0x%02x]",
+                cfg_out->ucr, cfg_out->mcr, cfg_out->brsr, cfg_out->icr, cfg_out->lpb, cfg_out->intr,
                 cfg_out->tx_head_lo, cfg_out->tx_head_hi, cfg_out->rx_head_lo, cfg_out->rx_head_hi);
+            return -EIO;
         }
 
         return 0; // 成功
