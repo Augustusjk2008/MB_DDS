@@ -14,7 +14,7 @@ void helm_callback(void* para) {
     static uint16_t fdb[4];
     static uint32_t v_input[4] = {0x11111234, 0x55555678, 0x99999ABC, 0xEEEEEDF0};
     static int32_t hardware_enabled = 1;
-    if (hardware_enabled <= 0) {
+    if (hardware_enabled > 0) {
         hardware_enabled = helm->receive((uint8_t*)fdb, sizeof(fdb));
         helm->send((uint8_t*)v_input, sizeof(v_input));
     }

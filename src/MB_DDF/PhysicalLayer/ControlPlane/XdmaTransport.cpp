@@ -362,11 +362,6 @@ int XdmaTransport::waitEvent(uint32_t* bitmap, uint32_t timeout_ms) {
     if (events_fd_ < 0) return 0;
     struct pollfd pfd{ events_fd_, POLLIN, 0 };
     int ret = ::poll(&pfd, 1, static_cast<int>(timeout_ms));
-    {
-        // int ret = ::read(events_fd_, bitmap, sizeof(uint32_t));
-        // 输出 bitmap
-        // LOGI("xdma", "waitEvent", events_fd_, "bitmap=0x%08x", *bitmap);
-    }
     if (ret == 0) return 0;
     if (ret < 0) {
         LOGE("xdma", "waitEvent", errno, "poll error fd=%d", events_fd_);

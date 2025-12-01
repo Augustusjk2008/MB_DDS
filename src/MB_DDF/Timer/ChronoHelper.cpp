@@ -148,8 +148,8 @@ void ChronoHelper::report_all(const Clock::time_point& now) {
 }
 
 // 记录时间间隔点
-void ChronoHelper::record(int counter_id, long long expected_interval) {
-    if (off || counter_id < 0 || counter_id > 10) return;
+bool ChronoHelper::record(int counter_id, long long expected_interval) {
+    if (off || counter_id < 0 || counter_id > 10) return false;
     auto now = Clock::now();
     
     if (expected_interval > 0) {
@@ -159,7 +159,7 @@ void ChronoHelper::record(int counter_id, long long expected_interval) {
     if (stats_map.find(counter_id) == stats_map.end()) {
         stats_map[counter_id] = Stats();
         stats_map[counter_id].last_call_time = now;
-        return;
+        return false;
     }
     
     Stats& s = stats_map[counter_id];
@@ -182,7 +182,9 @@ void ChronoHelper::record(int counter_id, long long expected_interval) {
     
     if (time_diff_us(common_last_report_time, now) >= REPORT_INTERVAL) {
         report_all(now);
+        return true;
     }
+    return false;
 }
 
 void ChronoHelper::set_overwrite_output(bool overwrite) {

@@ -31,6 +31,7 @@ static constexpr uint64_t RHH_reg  = 0x207; // 接收头高字节（8位）
 // static constexpr uint64_t RTH_reg  = 0x20B; // 接收尾高字节（8位，可选）
 static constexpr uint64_t LPB_reg  = 0x20C; // 回环模式寄存器（8位）
 static constexpr uint64_t INT_reg  = 0x20D; // 中断模式寄存器（8位）
+static constexpr uint64_t EVT_reg  = 0x210; // 事件宽度寄存器（16位）
 
 static constexpr uint64_t CMD_reg  = 0x300; // 命令/状态寄存器（写入命令用 32 位，读取状态用 8 位）
 static constexpr uint64_t STU_reg  = 0x300; // 状态寄存器（与 CMD 同址，读 8 位）
@@ -237,6 +238,7 @@ int Rs422Device::ioctl(uint32_t opcode, const void* in, size_t in_len, void* out
         // 配置中断和回环
         if (!wr8(LPB_reg, cfg->lpb))  { return -EIO; } 
         if (!wr8(INT_reg, cfg->intr))  { return -EIO; } 
+        if (!wr16(EVT_reg, cfg->evt))  { return -EIO; } 
 
         // 参考 rs422_config 的寄存器写序，并在每次写后短暂延时
         // UCR: UART 控制；MCR: 模式控制；BRSR: 波特率；ICR: 状态控制

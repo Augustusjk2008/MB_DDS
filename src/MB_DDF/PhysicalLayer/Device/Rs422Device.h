@@ -39,6 +39,7 @@ public:
         uint8_t rx_head_hi{0};
         uint8_t lpb{0};
         uint8_t intr{0};
+        uint16_t evt{0};
     };
 
     bool open(const LinkConfig& cfg) override;
@@ -55,7 +56,7 @@ public:
     int32_t receive_full(uint8_t* buf, uint32_t buf_size, uint32_t timeout_us);
 
     // ioctl 留空实现（待用户后续补充具体寄存器配置/查询语义）
-    int ioctl(uint32_t opcode, const void* in, size_t in_len, void* out, size_t out_len) override;
+    int ioctl(uint32_t opcode, const void* in, size_t in_len, void* out = nullptr, size_t out_len = 0) override;
 };
 
 } // namespace Device

@@ -40,6 +40,7 @@ namespace Timer {
  */
 class ChronoHelper {
 public:
+
     // 测量单次函数执行时间（禁止嵌套）
     /**
      * @brief 计量一次函数执行耗时并打印（单位：us）。
@@ -138,8 +139,9 @@ public:
      * @brief 记录一次调用，用于统计循环周期与期望值的偏差。
      * @param counter_id 计数器ID（默认0，最多10）
      * @param expected_interval 期望周期（微秒，0表示按最近1秒平均值估算）
+     * @return 是否达到记录周期
      */
-    static void record(int counter_id = 0, long long expected_interval = 0);
+    static bool record(int counter_id = 0, long long expected_interval = 0);
     /**
      * @brief 设置是否覆盖输出（终端上方回写）。
      * @param overwrite true开启覆盖输出
@@ -154,12 +156,20 @@ public:
      * @brief 关闭/开启统计。
      * @param off true关闭；false开启
      */
-    static void set_off(bool off);
-    // ================== End ==================
+    static void set_off(bool off);    
+
+    // ========== 区间统计相关成员 ==========
+    using Clock = std::chrono::steady_clock;
+    struct Stats {
+        std::deque<std::pair<Clock::time_point, long long>> recent_intervals; // 用于计算平均间隔
+        Clock::time_point last_call_time;
+        std::vector<long long> jitters;        // 存储抖动绝对值
+        long long max_jitter = 0;              // 最大抖动
+    };
+
+    static std::unordered_map<int, Stats> stats_map;
 
 private:
-    using Clock = std::chrono::steady_clock;
-
     // 嵌套调用防护
     static thread_local int call_depth; // 支持多线程场景
 
@@ -188,16 +198,6 @@ private:
     }
 
     static std::unordered_map<unsigned, Clock::time_point> start_times;
-
-    // ========== 区间统计相关成员 ==========
-    struct Stats {
-        std::deque<std::pair<Clock::time_point, long long>> recent_intervals; // 用于计算平均间隔
-        Clock::time_point last_call_time;
-        std::vector<long long> jitters;        // 存储抖动绝对值
-        long long max_jitter = 0;              // 最大抖动
-    };
-
-    static std::unordered_map<int, Stats> stats_map;
     static std::unordered_map<int, long long> expected_interval_map;
     static long long REPORT_INTERVAL;
     static Clock::time_point common_last_report_time;

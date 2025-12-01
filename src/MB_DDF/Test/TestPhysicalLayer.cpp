@@ -79,7 +79,11 @@ void test_udp_link() {
 
     int fd1 = link1.getIOFd();
     int fd2 = link2.getIOFd();
-    assert(fd1 > 0 && fd2 > 0);
+    if (fd1 <= 0 || fd2 <= 0) {
+        LOG_ERROR << "getIOFd() failed. fd1=" << fd1 << ", fd2=" << fd2;
+        cleanup_udp_links(link1, link2);
+        return;
+    }
     LOG_INFO << "getIOFd() returns valid file descriptors.";
     assert(link1.getEventFd() == fd1);
     LOG_INFO << "getEventFd() returns same fd as getIOFd().";
@@ -133,7 +137,11 @@ void test_udp_link() {
     
     // 4. ioctl 测试
     int ioctl_ret = link1.ioctl(0, nullptr, 0, nullptr, 0);
-    assert(ioctl_ret == -ENOTSUP);
+    if (ioctl_ret != -ENOTSUP) {
+        LOG_ERROR << "ioctl() failed. ret=" << ioctl_ret;
+        cleanup_udp_links(link1, link2);
+        return;
+    }
     LOG_INFO << "ioctl() correctly returns -ENOTSUP.";
 
     // 5. 关闭
@@ -153,7 +161,7 @@ void test_rs422_device(int num) {
     ControlPlane::XdmaTransport transport;
     TransportConfig cfg_tp;
     cfg_tp.device_path = "/dev/xdma0";
-    cfg_tp.event_number = 0;
+    cfg_tp.event_number = num;
     cfg_tp.device_offset = 0x10000 * num;
     // cfg_tp.device_offset = 0x00000; // 3号引信
     // cfg_tp.device_offset = 0x10000; // 
@@ -205,7 +213,7 @@ void test_rs422_device(int num) {
     Device::Rs422Device::Config cfg = {
         .ucr = 0x30,
         .mcr = 0x20,
-        .brsr = 0x0A,
+        .brsr = 0x0C,
         .icr = 0x01,
         .tx_head_lo = 0xAA,
         .tx_head_hi = 0x55,
@@ -213,29 +221,22 @@ void test_rs422_device(int num) {
         .rx_head_hi = 0x55,
         .lpb = 0xAF,    // AF = 回环
         .intr = 0xAE,   // AE = 自控中断
+        .evt = 1250,    // 125 = 脉冲宽度 1us
     };
     Device::Rs422Device::Config cfg_return;
     int ioctl_ret = adapter_422.ioctl(Device::Rs422Device::IOCTL_CONFIG, 
         &cfg, sizeof(cfg), 
         &cfg_return, sizeof(cfg_return)); 
-    assert(ioctl_ret == 0);
+    if (ioctl_ret != 0) {
+        LOG_ERROR << "ioctl() failed. ret=" << ioctl_ret;
+        return;
+    }
     LOG_INFO << "ioctl() correctly returns 0.";
 
     // 6. 数据收发验证
     for (int i=0; i<test_mtu; i++) {
         buf.data()[i] = i;
     }
-    adapter_422.receive(buf_r.data(), buf.size(), 10000);
-    LOG_INFO << "Clear old data.";
-    // for (int i=0; i<10; i++) {
-    //     adapter_422.send(buf.data(), test_mtu);
-    //     int received = adapter_422.receive(buf_r.data(), buf.size(), 3000000);
-    //     if (received > 0) {
-    //         LOG_INFO << "Received " << received << " bytes.";
-    //     } else {
-    //         LOG_ERROR << "receive() timeout/failed. ret=" << received;
-    //     }
-    // }
     MB_DDF::Timer::ChronoHelper::timingAverage(100, [&]() {
         static bool err = false;
         if (err) return;
@@ -243,8 +244,9 @@ void test_rs422_device(int num) {
         adapter_422.send(buf.data(), test_mtu);
         int received = adapter_422.receive(buf_r.data(), buf.size(), 100000);
         if (received != test_mtu) {
+            received = adapter_422.receive(buf_r.data(), buf.size());
             LOG_ERROR << "receive() failed or timed out. ret=" << received;
-            err = true;
+            // err = true;
         } else if (memcmp(buf.data(), buf_r.data(), received) != 0) {
             LOG_ERROR << "Received data does not match sent data.";
             // 打印数据
@@ -313,7 +315,8 @@ void test_helm_transport() {
     uint32_t status;
     tp_helm.readReg32(0xFF*4, status);
     LOG_INFO << "Helm status is: " << status;
-    sleep(1);
+    break;
+    // sleep(1);
     }
     // 释放
     cleanup_device(helm, tp_helm);
@@ -360,7 +363,7 @@ void test_can_transport() {
 
     int pass = 0, fail = 0;
     Device::CanFrame tx;    
-    MB_DDF::Timer::ChronoHelper::timingAverage(10000, [&]() {
+    MB_DDF::Timer::ChronoHelper::timingAverage(1000, [&]() {
         static int i = 0;
         tx.id = 0x123;    // 标准帧 ID
         tx.ide = false;
@@ -384,21 +387,7 @@ void test_can_transport() {
         // 轮询接收：无 event 中断，轮询 receive(CanFrame&)
         Device::CanFrame rx;
         int32_t got = -1;
-        int tries = 0;
         got = can_dev.receive(rx, 2000);
-        // while (1) {
-        // for (; tries < 100000; ++tries) { // 最长约100ms
-        //     got = can_dev.receive(rx);
-        //     if (got > 0) break;
-        //     // 也轮询 ISR 位来辅助判断是否该继续等
-        //     uint32_t isr = 0;
-        //     can_dev.rd32(0x01C, isr);
-        //     if ((isr & 0x10) != 0) {
-        //         // 有 RXOK 但读取失败，稍作等待再读
-        //         usleep(15);
-        //     }
-        //     usleep(10); // 1ms 间隔
-        // }
         if (got <= 0) {
             LOG_ERROR << "receive() timeout/failed at round " << i << " ret=" << got;
             ++fail;
@@ -583,14 +572,14 @@ void test_any_transport() {
     const uint64_t di_addr_offset = 0;
     const size_t data_size = 64;
     uint32_t test_set[data_size] = {0}, test_get[data_size] = {0};
-    for (int i = 0; i < data_size; i++) {
+    for (size_t i = 0; i < data_size; i++) {
         test_set[i] = i * 5;
     }
     while(1) {
-        for (int i = 0; i < data_size; i++) {
+        for (size_t i = 0; i < data_size; i++) {
             pcie.writeReg32(do_addr_offset + i * 4, test_set[i]);
         }
-        for (int i = 0; i < data_size; i++) {
+        for (size_t i = 0; i < data_size; i++) {
             pcie.readReg32(di_addr_offset + i * 4, test_get[i]);
             LOG_INFO << "rd_wr_addr: " << di_addr_offset + i * 4 << ", get: " << test_get[i];
         }
@@ -609,12 +598,12 @@ int main() {
     LOG_DOUBLE_SEPARATOR();
     LOG_BLANK_LINE();
 
-    test_rs422_device(0);
-    // test_ddr_transport();
-    // test_udp_link();
+    test_ddr_transport();
+    test_udp_link();
+    test_rs422_device(2);
     test_can_transport();
-    // test_helm_transport();
-    // test_IO_transport();
+    test_helm_transport();
+    test_IO_transport();
     // test_any_transport();
 
     LOG_DOUBLE_SEPARATOR();

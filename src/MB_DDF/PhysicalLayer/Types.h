@@ -39,7 +39,8 @@ struct TransportConfig {
     __off_t device_offset{0};        // 设备内存偏移（用于寄存器映射）
 };
 
-// 设备能力：用于运行时能力发现与上层决策
+// 设备能力：用于运行时能力发现与上层决策，暂不实现
+/*
 struct DeviceCapabilities {
     bool supports_dma{false};
     bool supports_event_fd{false};
@@ -52,7 +53,7 @@ struct DeviceCapabilities {
         ChannelId,   // 通道/队列编号
         OffsetBased  // 偏移寻址（寄存器/环形队列）
     } addressing_mode{AddressingMode::None};
-};
+}; */
 
 // 设备聚合配置：统一入口，包含数据面与控制面配置
 struct DeviceConfig {
