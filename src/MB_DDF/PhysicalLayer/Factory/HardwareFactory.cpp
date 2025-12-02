@@ -39,14 +39,29 @@ std::unique_ptr<DDS::Handle> HardwareFactory::create(const std::string& name, vo
         h->dev->open(lc);
         uint32_t off = 0; 
         h->dev->ioctl(Device::CanDevice::IOCTL_SET_LOOPBACK, &off, sizeof(off));
-        h->dev->ioctl(Device::CanDevice::IOCTL_SET_BIT_TIMING, param, sizeof(Device::CanDevice::BitTiming));
+        if (param != nullptr) {
+            h->dev->ioctl(Device::CanDevice::IOCTL_SET_BIT_TIMING, param, sizeof(Device::CanDevice::BitTiming));
+        } else {
+            uint32_t baud = 500000;
+            h->dev->ioctl(Device::CanDevice::IOCTL_SET_BIT_TIMING, &baud, sizeof(baud));
+        }
     } else if (name == "helm") {
         tc.device_offset = 0x60000;
         h->tp.open(tc);
         h->mtu = 16;
         h->dev = std::make_unique<Device::HelmDevice>(h->tp, h->mtu);
-        LinkConfig lc; h->dev->open(lc);
-        h->dev->ioctl(Device::HelmDevice::IOCTL_HELM, param, sizeof(Device::HelmDevice::Config));
+        LinkConfig lc; 
+        h->dev->open(lc);
+        if (param != nullptr) {
+            h->dev->ioctl(Device::HelmDevice::IOCTL_HELM, param, sizeof(Device::HelmDevice::Config));
+        } else {
+            Device::HelmDevice::Config ctl_helm = {
+                .pwm_freq = 8000,
+                .out_enable = 0xFFFF,
+                .ad_filter = 0,
+            };
+            h->dev->ioctl(Device::HelmDevice::IOCTL_HELM, &ctl_helm, sizeof(ctl_helm));
+        }
     } else if (name == "rs422_1") {
         tc.device_offset = 0;
         tc.event_number = 0;
@@ -56,9 +71,28 @@ std::unique_ptr<DDS::Handle> HardwareFactory::create(const std::string& name, vo
         LinkConfig lc; 
         h->dev->open(lc);
         Device::Rs422Device::Config cfg_return;
-        h->dev->ioctl(Device::Rs422Device::IOCTL_CONFIG, 
-            param, sizeof(Device::Rs422Device::Config), 
-            &cfg_return, sizeof(Device::Rs422Device::Config)); 
+        if (param != nullptr) {
+            h->dev->ioctl(Device::Rs422Device::IOCTL_CONFIG, 
+                param, sizeof(Device::Rs422Device::Config), 
+                &cfg_return, sizeof(Device::Rs422Device::Config)); 
+        } else {
+            Device::Rs422Device::Config cfg = {
+                .ucr = 0x30,
+                .mcr = 0x20,
+                .brsr = 0x0C,
+                .icr = 0x01,
+                .tx_head_lo = 0xAA,
+                .tx_head_hi = 0x55,
+                .rx_head_lo = 0xAA,
+                .rx_head_hi = 0x55,
+                .lpb = 0xAF,    // AF = 回环
+                .intr = 0xAE,   // AE = 自控中断
+                .evt = 1250,    // 125 = 脉冲宽度 1us
+            };
+            h->dev->ioctl(Device::Rs422Device::IOCTL_CONFIG, 
+                &cfg, sizeof(cfg), 
+                &cfg_return, sizeof(cfg_return)); 
+        }
     } else if (name == "ddr") {
         tc.dma_h2c_channel = 0;
         tc.dma_c2h_channel = 0;
@@ -72,7 +106,11 @@ std::unique_ptr<DDS::Handle> HardwareFactory::create(const std::string& name, vo
         h->mtu = 60000;
         h->dev = std::make_unique<DataPlane::UdpLink>();
         LinkConfig lc; 
-        lc.name = std::string((const char*)param);
+        if (param != nullptr) {
+            lc.name = std::string((const char*)param);
+        } else {
+            lc.name = std::string("12345");
+        }
         lc.mtu = h->mtu;
         h->dev->open(lc);
     } else {
