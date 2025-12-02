@@ -24,7 +24,7 @@ struct HandleImpl : public DDS::Handle {
 };
 }
 
-std::unique_ptr<DDS::Handle> HardwareFactory::create(const std::string& name, void* param) {
+std::shared_ptr<DDS::Handle> HardwareFactory::create(const std::string& name, void* param) {
     auto h = std::make_unique<HandleImpl>();
     TransportConfig tc;
     tc.device_path = "/dev/xdma0";

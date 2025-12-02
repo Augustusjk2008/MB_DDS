@@ -19,8 +19,9 @@ namespace MB_DDF {
 namespace DDS {
 
 Subscriber::Subscriber(TopicMetadata* metadata, RingBuffer* ring_buffer, const std::string& subscriber_name, std::shared_ptr<Handle> handle)
-    : metadata_(metadata), ring_buffer_(ring_buffer), handle_(std::move(handle)),
-      subscribed_(false), running_(false), subscriber_name_(subscriber_name) {
+    : metadata_(metadata), ring_buffer_(ring_buffer), callback_(nullptr),
+      subscribed_(false), running_(false), worker_thread_(), handle_(std::move(handle)),
+      subscriber_name_(subscriber_name) {
     // 生成唯一的订阅者ID
     std::random_device rd;
     std::mt19937_64 gen(rd());
@@ -231,4 +232,3 @@ size_t Subscriber::read(void* data, size_t size, bool latest) {
 
 } // namespace DDS
 } // namespace MB_DDF
-

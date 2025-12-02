@@ -9,7 +9,7 @@ namespace Factory {
 
 class HardwareFactory {
 public:
-    static std::unique_ptr<DDS::Handle> create(const std::string& name, void* param = nullptr);
+    static std::shared_ptr<DDS::Handle> create(const std::string& name, void* param = nullptr);
 };
 
 } // namespace PhysicalLayer

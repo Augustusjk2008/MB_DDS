@@ -31,6 +31,7 @@ std::shared_ptr<Publisher> DDSCore::create_publisher(const std::string& topic_na
         LOG_ERROR << "failed to create publisher, handle is null";
         return nullptr;
     }
+    LOG_INFO << "created publisher, topic name: " << topic_name;
     auto publisher = std::make_shared<Publisher>(nullptr, nullptr, process_name_, handle);    
     return publisher;
 }

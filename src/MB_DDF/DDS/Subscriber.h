@@ -110,7 +110,7 @@ private:
     std::atomic<bool> subscribed_;  ///< 订阅状态标志
     std::atomic<bool> running_;     ///< 工作线程运行状态标志
     std::thread worker_thread_;     ///< 消息接收工作线程
-    std::shared_ptr<Handle> handle_; ///< 外部接收者句柄
+    std::shared_ptr<Handle> handle_{}; ///< 外部接收者句柄
     std::vector<uint8_t> receive_buffer_{}; ///< 接收消息缓存
 
     // 自身信息
