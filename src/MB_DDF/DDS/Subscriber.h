@@ -20,6 +20,7 @@
 #include <atomic>
 #include <cstdint>
 #include <vector>
+#include <memory>
 
 namespace MB_DDF {
 namespace DDS {
