@@ -50,7 +50,7 @@ public:
     const ControlPlane::IDeviceTransport& transport() const { return tp_; }
 
     // 纯虚：适配器的具体设备控制由派生类实现（寄存器读写集等）
-    int ioctl(uint32_t opcode, const void* in, size_t in_len, void* out, size_t out_len) override = 0;
+    int ioctl(uint32_t opcode, const void* in, size_t in_len, void* out = nullptr, size_t out_len = 0) override = 0;
 
 // protected:    
     // 寄存器读写便捷封装
