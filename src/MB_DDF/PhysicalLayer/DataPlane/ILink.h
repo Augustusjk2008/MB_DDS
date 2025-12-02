@@ -45,7 +45,7 @@ public:
     // 约定：
     // - 返回值 >=0 表示成功，可为写入/读取的字节数或具体结果码；
     // - 返回值 <0 表示错误（如不支持、参数错误、设备错误等）。
-    virtual int ioctl(uint32_t opcode, const void* in, size_t in_len, void* out, size_t out_len) = 0;
+    virtual int ioctl(uint32_t opcode, const void* in, size_t in_len, void* out = nullptr, size_t out_len = 0) = 0;
 };
 
 } // namespace DataPlane

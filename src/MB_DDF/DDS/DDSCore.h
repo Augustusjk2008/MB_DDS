@@ -49,7 +49,7 @@ public:
     static DDSCore& instance();
 
     // 版本号，用于共享内存布局升级
-    static const uint32_t VERSION = 0x00004005;
+    static const uint32_t VERSION = 0x00004006;
     
     /**
      * @brief 创建指定Topic的发布者
@@ -60,12 +60,28 @@ public:
     std::shared_ptr<Publisher> create_publisher(const std::string& topic_name, bool enable_checksum = true);
 
     /**
+     * @brief 创建指定Topic的发布者，并绑定DDS句柄
+     * @param topic_name Topic名称
+     * @param handle 外部发布者句柄
+     * @return 发布者智能指针，失败时返回nullptr
+     */
+    std::shared_ptr<Publisher> create_publisher(const std::string& topic_name, std::shared_ptr<Handle> handle);
+
+    /**
      * @brief 创建指定Topic的发布者（别名）
      * @param topic_name Topic名称
      * @param enable_checksum 是否启用校验和，默认true
      * @return 发布者智能指针，失败时返回nullptr
      */
     std::shared_ptr<Publisher> create_writer(const std::string& topic_name, bool enable_checksum = true);
+
+    /**
+     * @brief 创建指定Topic的发布者（别名），并绑定DDS句柄
+     * @param topic_name Topic名称
+     * @param handle 外部发布者句柄
+     * @return 发布者智能指针，失败时返回nullptr
+     */
+    std::shared_ptr<Publisher> create_writer(const std::string& topic_name, std::shared_ptr<Handle> handle);
     
     /**
      * @brief 创建指定Topic的订阅者
@@ -77,6 +93,15 @@ public:
     std::shared_ptr<Subscriber> create_subscriber(const std::string& topic_name, bool enable_checksum = true, const MessageCallback& callback = nullptr);
 
     /**
+     * @brief 创建指定Topic的订阅者，并绑定DDS句柄
+     * @param topic_name Topic名称
+     * @param handle 外部订阅者句柄
+     * @param callback 消息接收回调函数，默认空函数
+     * @return 订阅者智能指针，失败时返回nullptr
+     */
+    std::shared_ptr<Subscriber> create_subscriber(const std::string& topic_name, std::shared_ptr<Handle> handle, const MessageCallback& callback = nullptr);
+
+    /**
      * @brief 创建指定Topic的订阅者（别名）
      * @param topic_name Topic名称
      * @param enable_checksum 是否启用校验和，默认true
@@ -84,6 +109,15 @@ public:
      * @return 订阅者智能指针，失败时返回nullptr
      */
     std::shared_ptr<Subscriber> create_reader(const std::string& topic_name, bool enable_checksum = true, const MessageCallback& callback = nullptr);
+
+    /**
+     * @brief 创建指定Topic的订阅者（别名），并绑定DDS句柄
+     * @param topic_name Topic名称
+     * @param handle 外部订阅者句柄
+     * @param callback 消息接收回调函数，默认空函数
+     * @return 订阅者智能指针，失败时返回nullptr
+     */
+    std::shared_ptr<Subscriber> create_reader(const std::string& topic_name, std::shared_ptr<Handle> handle, const MessageCallback& callback = nullptr);
 
     /**
      * @brief 发布数据到指定Topic

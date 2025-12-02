@@ -12,8 +12,8 @@
 namespace MB_DDF {
 namespace DDS {
 
-Publisher::Publisher(TopicMetadata* metadata, RingBuffer* ring_buffer, const std::string& publisher_name)
-    : metadata_(metadata), ring_buffer_(ring_buffer), publisher_name_(publisher_name) {
+Publisher::Publisher(TopicMetadata* metadata, RingBuffer* ring_buffer, const std::string& publisher_name, std::shared_ptr<Handle> handle)
+    : metadata_(metadata), ring_buffer_(ring_buffer), handle_(std::move(handle)), publisher_name_(publisher_name) {
     // 构造函数直接绑定metadata，不需要判断topic是否存在
     // 生成唯一的发布者ID
     std::random_device rd;
@@ -106,6 +106,10 @@ bool Publisher::publish_fill(size_t max_size, const std::function<size_t(void* b
 }
 
 bool Publisher::publish(const void* data, size_t size) {
+    if (handle_ != nullptr) {
+        return handle_->send((const uint8_t*)data, size);
+    }
+
     if (ring_buffer_ == nullptr) {
         return false;
     }

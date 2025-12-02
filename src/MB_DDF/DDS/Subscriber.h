@@ -12,12 +12,14 @@
 
 #include "MB_DDF/DDS/RingBuffer.h"
 #include "MB_DDF/DDS/TopicRegistry.h"
+#include "MB_DDF/DDS/DDSHandle.h"
 #include <cstddef>
 #include <string>
 #include <functional>
 #include <thread>
 #include <atomic>
 #include <cstdint>
+#include <vector>
 
 namespace MB_DDF {
 namespace DDS {
@@ -45,8 +47,9 @@ public:
      * @param metadata Topic元数据指针
      * @param ring_buffer 关联的环形缓冲区指针
      * @param subscriber_name 订阅者名称（可选，默认为空）
+     * @param handle 外部接收者句柄（可选，默认为空）
      */
-    Subscriber(TopicMetadata* metadata, RingBuffer* ring_buffer, const std::string& subscriber_name = "");
+    Subscriber(TopicMetadata* metadata, RingBuffer* ring_buffer, const std::string& subscriber_name = "", std::shared_ptr<Handle> handle = nullptr);
     
     /**
      * @brief 析构函数，自动取消订阅并清理资源
@@ -106,6 +109,8 @@ private:
     std::atomic<bool> subscribed_;  ///< 订阅状态标志
     std::atomic<bool> running_;     ///< 工作线程运行状态标志
     std::thread worker_thread_;     ///< 消息接收工作线程
+    std::shared_ptr<Handle> handle_; ///< 外部接收者句柄
+    std::vector<uint8_t> receive_buffer_{}; ///< 接收消息缓存
 
     // 自身信息
     uint64_t subscriber_id_;        ///< 唯一的订阅者ID

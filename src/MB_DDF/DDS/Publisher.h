@@ -12,6 +12,7 @@
 
 #include "MB_DDF/DDS/RingBuffer.h"
 #include "MB_DDF/DDS/TopicRegistry.h"
+#include "MB_DDF/DDS/DDSHandle.h"
 #include <string>
 #include <cstdint>
 #include <functional>
@@ -33,8 +34,9 @@ public:
      * @param metadata Topic元数据指针
      * @param ring_buffer 关联的环形缓冲区指针
      * @param publisher_name 发布者名称（可选，默认为空）
+     * @param handle 外部发布者句柄（可选，默认为空）
      */
-    Publisher(TopicMetadata* metadata, RingBuffer* ring_buffer, const std::string& publisher_name = "");
+    Publisher(TopicMetadata* metadata, RingBuffer* ring_buffer, const std::string& publisher_name = "", std::shared_ptr<Handle> handle = nullptr);
     
     /**
      * @brief 析构函数，清理资源
@@ -58,6 +60,7 @@ public:
         TopicMetadata* metadata_;
         RingBuffer::ReserveToken token_;
         bool committed_;
+
     };
 
     /**
@@ -118,6 +121,7 @@ public:
 private:
     TopicMetadata* metadata_;    ///< Topic元数据指针
     RingBuffer* ring_buffer_;    ///< 环形缓冲区指针
+    std::shared_ptr<Handle> handle_; ///< 外部发布者句柄
 
     // 自身信息
     uint64_t publisher_id_;        ///< 唯一的发布者ID
@@ -126,6 +130,5 @@ private:
 
 } // namespace DDS
 } // namespace MB_DDF
-
 
 

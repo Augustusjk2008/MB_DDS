@@ -26,6 +26,15 @@ DDSCore& DDSCore::instance() {
     return instance;
 }
 
+std::shared_ptr<Publisher> DDSCore::create_publisher(const std::string& topic_name, std::shared_ptr<Handle> handle) {
+    if (handle == nullptr) {
+        LOG_ERROR << "failed to create publisher, handle is null";
+        return nullptr;
+    }
+    auto publisher = std::make_shared<Publisher>(nullptr, nullptr, process_name_, handle);    
+    return publisher;
+}
+
 std::shared_ptr<Publisher> DDSCore::create_publisher(const std::string& topic_name, bool enable_checksum) {     
     // 使用RAII守护对象保护共享内存访问
     RingBuffer* buffer = nullptr;
@@ -51,9 +60,24 @@ std::shared_ptr<Publisher> DDSCore::create_publisher(const std::string& topic_na
     return publisher;
 }
 
+std::shared_ptr<Publisher> DDSCore::create_writer(const std::string& topic_name, std::shared_ptr<Handle> handle) {   
+    return create_publisher(topic_name, handle);
+} 
+
 std::shared_ptr<Publisher> DDSCore::create_writer(const std::string& topic_name, bool enable_checksum) {   
     return create_publisher(topic_name, enable_checksum);
 } 
+
+std::shared_ptr<Subscriber> DDSCore::create_subscriber(const std::string& topic_name, std::shared_ptr<Handle> handle, const MessageCallback& callback) {
+    if (handle == nullptr) {
+        LOG_ERROR << "failed to create subscriber, handle is null";
+        return nullptr;
+    }
+    LOG_INFO << "created subscriber, topic name: " << topic_name;
+    std::shared_ptr<Subscriber> subscriber = std::make_shared<Subscriber>(nullptr, nullptr, process_name_, handle);
+    subscriber->subscribe(callback);
+    return subscriber;
+}
 
 std::shared_ptr<Subscriber> DDSCore::create_subscriber(const std::string& topic_name, bool enable_checksum, const MessageCallback& callback) {
     // 使用RAII守护对象保护共享内存访问
@@ -79,6 +103,10 @@ std::shared_ptr<Subscriber> DDSCore::create_subscriber(const std::string& topic_
 
 std::shared_ptr<Subscriber> DDSCore::create_reader(const std::string& topic_name, bool enable_checksum, const MessageCallback& callback) {
     return create_subscriber(topic_name, enable_checksum, callback);
+}
+
+std::shared_ptr<Subscriber> DDSCore::create_reader(const std::string& topic_name, std::shared_ptr<Handle> handle, const MessageCallback& callback) {
+    return create_subscriber(topic_name, handle, callback);
 }
 
 size_t DDSCore::data_write(std::shared_ptr<Publisher> publisher, const void* data, size_t size) {

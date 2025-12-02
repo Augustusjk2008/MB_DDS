@@ -18,8 +18,8 @@
 namespace MB_DDF {
 namespace DDS {
 
-Subscriber::Subscriber(TopicMetadata* metadata, RingBuffer* ring_buffer, const std::string& subscriber_name)
-    : metadata_(metadata), ring_buffer_(ring_buffer), 
+Subscriber::Subscriber(TopicMetadata* metadata, RingBuffer* ring_buffer, const std::string& subscriber_name, std::shared_ptr<Handle> handle)
+    : metadata_(metadata), ring_buffer_(ring_buffer), handle_(std::move(handle)),
       subscribed_(false), running_(false), subscriber_name_(subscriber_name) {
     // 生成唯一的订阅者ID
     std::random_device rd;
@@ -29,6 +29,11 @@ Subscriber::Subscriber(TopicMetadata* metadata, RingBuffer* ring_buffer, const s
     // 如果没有提供订阅者名称，生成默认名称
     if (subscriber_name_.empty()) {
         subscriber_name_ = "subscriber_" + std::to_string(subscriber_id_);
+    }
+
+    // 如果提供了句柄，初始化接收缓存
+    if (handle_) {
+        receive_buffer_.resize(handle_->getMTU());
     }
 }
 
@@ -42,11 +47,13 @@ bool Subscriber::subscribe(MessageCallback callback) {
         return false; // 已经订阅
     }
     
-    // 在RingBuffer中注册订阅者
-    subscriber_state_ = ring_buffer_->register_subscriber(subscriber_id_, subscriber_name_);
-    if (!subscriber_state_) {
-        LOG_DEBUG << "Failed to register subscriber " << subscriber_id_ << " " << subscriber_name_;
-        return false;
+    if (handle_ == nullptr) {
+        // 在RingBuffer中注册订阅者
+        subscriber_state_ = ring_buffer_->register_subscriber(subscriber_id_, subscriber_name_);
+        if (!subscriber_state_) {
+            LOG_DEBUG << "Failed to register subscriber " << subscriber_id_ << " " << subscriber_name_;
+            return false;
+        }
     }
     
     callback_ = callback;
@@ -96,7 +103,15 @@ void Subscriber::worker_loop() {
     size_t received_size = 0;   
     while (running_.load()) {
         received_size = 0;
-        
+        if (handle_ != nullptr) {
+            received_size = handle_->receive(receive_buffer_.data(), receive_buffer_.size(), 100000); 
+            // 调用回调函数
+            if (callback_ && received_size > 0) { 
+                callback_(receive_buffer_.data(), received_size, 0);
+            }
+            continue;
+        }
+
         if (ring_buffer_->get_unread_count(subscriber_state_) > 0) {
             // 从环形缓冲区读取下一条消息
             Message* msg = nullptr;
