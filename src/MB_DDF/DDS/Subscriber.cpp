@@ -223,6 +223,10 @@ size_t Subscriber::read(void* data, size_t size, bool latest) {
     if (callback_) {
         return 0; 
     }
+    // 绑定句柄时直接读取硬件
+    if (handle_ != nullptr) {
+        return handle_->receive((uint8_t*)data, size);
+    }
     if (latest) {
         return read_latest(data, size);
     } else {
