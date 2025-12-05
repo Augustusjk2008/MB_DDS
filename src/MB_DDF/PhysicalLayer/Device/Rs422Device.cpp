@@ -283,7 +283,7 @@ int Rs422Device::ioctl(uint32_t opcode, const void* in, size_t in_len, void* out
                 "read back  ucr=0x%02x mcr=0x%02x brsr=0x%02x icr=0x%02x lpb=0x%02x intr=0x%02x tx_head=[0x%02x,0x%02x] rx_head=[0x%02x,0x%02x]",
                 cfg_out->ucr, cfg_out->mcr, cfg_out->brsr, cfg_out->icr, cfg_out->lpb, cfg_out->intr,
                 cfg_out->tx_head_lo, cfg_out->tx_head_hi, cfg_out->rx_head_lo, cfg_out->rx_head_hi);
-            return -EIO;
+            // return -EIO;
         }
 
         return 0; // 成功

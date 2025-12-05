@@ -186,6 +186,13 @@ private:
     std::string get_process_name();
 };
 
+struct PubAndSub {
+    std::shared_ptr<Publisher> publisher;
+    std::shared_ptr<Subscriber> subscriber;
+    bool write(const void* data, size_t size) { return publisher->publish(data, size); }
+    size_t read(void* data, size_t size) { return subscriber->read(data, size); }
+};
+
 } // namespace DDS
 } // namespace MB_DDF
 

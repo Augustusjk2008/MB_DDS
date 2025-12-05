@@ -57,8 +57,8 @@ std::shared_ptr<DDS::Handle> HardwareFactory::create(const std::string& name, vo
         } else {
             Device::HelmDevice::Config ctl_helm = {
                 .pwm_freq = 8000,
-                .out_enable = 0xFFFF,
-                .ad_filter = 0,
+                .out_enable = 0xF,
+                .ad_filter = 1,
             };
             h->dev->ioctl(Device::HelmDevice::IOCTL_HELM, &ctl_helm, sizeof(ctl_helm));
         }

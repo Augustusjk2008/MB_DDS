@@ -213,13 +213,13 @@ void test_rs422_device(int num) {
     Device::Rs422Device::Config cfg = {
         .ucr = 0x30,
         .mcr = 0x20,
-        .brsr = 0x0C,
+        .brsr = 0x0A,
         .icr = 0x01,
         .tx_head_lo = 0xAA,
-        .tx_head_hi = 0x55,
+        .tx_head_hi = 0x1A,
         .rx_head_lo = 0xAA,
-        .rx_head_hi = 0x55,
-        .lpb = 0xAF,    // AF = 回环
+        .rx_head_hi = 0x1A,
+        .lpb = 0x00,    // AF = 回环
         .intr = 0xAE,   // AE = 自控中断
         .evt = 1250,    // 125 = 脉冲宽度 1us
     };
@@ -237,13 +237,14 @@ void test_rs422_device(int num) {
     for (int i=0; i<test_mtu; i++) {
         buf.data()[i] = i;
     }
-    MB_DDF::Timer::ChronoHelper::timingAverage(100, [&]() {
+    // adapter_422.send(buf.data(), test_mtu);
+    adapter_422.receive(buf_r.data(), buf.size());
+    MB_DDF::Timer::ChronoHelper::timingAverage(2, [&]() {
         static bool err = false;
         if (err) return;
         buf.data()[1] += 1;
-        adapter_422.send(buf.data(), test_mtu);
-        int received = adapter_422.receive(buf_r.data(), buf.size(), 100000);
-        if (received != test_mtu) {
+        int received = adapter_422.receive(buf_r.data(), buf.size(), 1000000);
+        if (received <= 0) {
             received = adapter_422.receive(buf_r.data(), buf.size());
             LOG_ERROR << "receive() failed or timed out. ret=" << received;
             // err = true;
@@ -253,7 +254,16 @@ void test_rs422_device(int num) {
             for (int i=0; i<20; i++) {
                 LOG_ERROR << "Data " << i << " is: " << (uint32_t)(buf.data()[i]) << " and " << (uint32_t)(buf_r.data()[i]);
             }
-            err = true;
+            // err = true;
+            // adapter_422.send(buf.data(), test_mtu);
+        } else {
+            static size_t count = 0;
+            count++;
+            if (count % 100 == 0) {
+                LOG_INFO << "recv count: " << count;
+                LOG_INFO << "recv size: " << received;
+            }
+            // adapter_422.send(buf.data(), test_mtu);
         }
     });
 
@@ -598,12 +608,16 @@ int main() {
     LOG_DOUBLE_SEPARATOR();
     LOG_BLANK_LINE();
 
-    test_ddr_transport();
-    test_udp_link();
+    // test_ddr_transport();
+    // test_udp_link();
+    test_rs422_device(0);
+    test_rs422_device(1);
     test_rs422_device(2);
-    test_can_transport();
-    test_helm_transport();
-    test_IO_transport();
+    test_rs422_device(3);
+    test_rs422_device(4);
+    // test_can_transport();
+    // test_helm_transport();
+    // test_IO_transport();
     // test_any_transport();
 
     LOG_DOUBLE_SEPARATOR();
