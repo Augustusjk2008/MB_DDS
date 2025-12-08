@@ -26,7 +26,7 @@ const float K_IN_OUT_1 = 1 / K_IN_OUT;
 float ins = 0;
 uint16_t fdb[4];
 int v_input[4] = {0, 0, 0, 0};
-float freq = 0.3f;
+float freq = 0.6f;
 float phase = 0.0f;
 
 void helm_callback(void* para) {
@@ -38,13 +38,13 @@ void helm_callback(void* para) {
     if (phase >= 1) {
         phase -= 1;
     }
-    // ins = 22.0f * sin(2 * std::numbers::pi * phase);
-    ins = 22.0f * ((phase > 0.5)? 1:-1);
+    ins = 22.0f * sin(2 * std::numbers::pi * phase);
+    // ins = 22.0f * ((phase > 0.5)? 1:-1);
     // ins = -0.0f;
-    v_input[0] = 1e8 / 544.6516 * 8.0 * (ins + K_IN_OUT_1 * static_cast<short>(fdb[2]));
-    v_input[1] = 1e8 / 544.6516 * 8.0 * (ins + K_IN_OUT_1 * static_cast<short>(fdb[3]));
-    v_input[2] = 1e8 / 544.6516 * 8.0 * (ins + K_IN_OUT_1 * static_cast<short>(fdb[0]));
-    v_input[3] = 1e8 / 544.6516 * 8.0 * (ins + K_IN_OUT_1 * static_cast<short>(fdb[1]));
+    v_input[0] = 1e8 / 544.6516 * 20.0 * (ins + K_IN_OUT_1 * static_cast<short>(fdb[0]));
+    v_input[1] = 1e8 / 544.6516 * 20.0 * (ins + K_IN_OUT_1 * static_cast<short>(fdb[1]));
+    v_input[2] = 1e8 / 544.6516 * 20.0 * (ins + K_IN_OUT_1 * static_cast<short>(fdb[2]));
+    v_input[3] = 1e8 / 544.6516 * 20.0 * (ins + K_IN_OUT_1 * static_cast<short>(fdb[3]));
     helm->write((uint8_t*)v_input, sizeof(v_input));
 }
 

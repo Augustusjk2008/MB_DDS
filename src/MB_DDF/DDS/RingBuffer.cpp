@@ -79,39 +79,37 @@ bool RingBuffer::read_expected(SubscriberState* subscriber, Message*& out_messag
         LOG_ERROR << "read_expected failed, subscriber is nullptr";
         return false;
     }
-    
+
+    uint64_t last_seq = subscriber->last_read_sequence.load(std::memory_order_acquire);
     uint64_t buffer_current_seq = header_->current_sequence.load(std::memory_order_acquire);
-    
-    // 检查是否有新消息
-    if (next_expected_sequence > buffer_current_seq) {
-        LOG_DEBUG << "read_expected failed, next_expected_sequence " << next_expected_sequence << " > buffer_current_seq " << buffer_current_seq;
+
+    if (next_expected_sequence <= last_seq) {
         return false;
     }
-    
-    // 从起始位置开始搜索期望的消息
-    size_t search_pos = subscriber->read_pos;
+    if (next_expected_sequence > buffer_current_seq) {
+        return false;
+    }
+
+    size_t search_pos = subscriber->read_pos.load(std::memory_order_acquire);
     for (size_t i = 0; i < capacity_; i += ALIGNMENT) {
         Message* msg = read_message_at(search_pos);
-        
+
         if (validate_message(msg)) {
-            // 检查序列号是否匹配期望值
             if (msg->header.sequence == next_expected_sequence) {
                 out_message = msg;
-                subscriber->last_read_sequence = msg->header.sequence;
-                subscriber->read_pos = search_pos;
-                subscriber->timestamp = msg->header.timestamp;
+                subscriber->last_read_sequence.store(msg->header.sequence, std::memory_order_release);
+                subscriber->read_pos.store(search_pos, std::memory_order_release);
+                subscriber->timestamp.store(msg->header.timestamp, std::memory_order_release);
                 return true;
             } else {
                 search_pos = (search_pos + msg->msg_size()) % capacity_;
-                // 对齐到ALIGNMENT边界
                 search_pos = (search_pos + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
             }
         } else {
             search_pos = (search_pos + ALIGNMENT) % capacity_;
-        }        
+        }
     }
-    
-    LOG_DEBUG << "read_expected failed, next_expected_sequence " << next_expected_sequence << " not found";
+
     return false;
 }
 

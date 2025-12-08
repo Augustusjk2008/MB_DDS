@@ -239,10 +239,10 @@ void test_rs422_device(int num) {
     }
     // adapter_422.send(buf.data(), test_mtu);
     adapter_422.receive(buf_r.data(), buf.size());
-    MB_DDF::Timer::ChronoHelper::timingAverage(2, [&]() {
+    MB_DDF::Timer::ChronoHelper::timingAverage(10000, [&]() {
         static bool err = false;
         if (err) return;
-        buf.data()[1] += 1;
+        // buf.data()[1] += 1;
         int received = adapter_422.receive(buf_r.data(), buf.size(), 1000000);
         if (received <= 0) {
             received = adapter_422.receive(buf_r.data(), buf.size());
@@ -255,15 +255,15 @@ void test_rs422_device(int num) {
                 LOG_ERROR << "Data " << i << " is: " << (uint32_t)(buf.data()[i]) << " and " << (uint32_t)(buf_r.data()[i]);
             }
             // err = true;
-            // adapter_422.send(buf.data(), test_mtu);
+            adapter_422.send(buf.data(), test_mtu);
         } else {
-            static size_t count = 0;
-            count++;
-            if (count % 100 == 0) {
-                LOG_INFO << "recv count: " << count;
-                LOG_INFO << "recv size: " << received;
-            }
-            // adapter_422.send(buf.data(), test_mtu);
+            // static size_t count = 0;
+            // count++;
+            // if (count % 100 == 0) {
+            //     LOG_INFO << "recv count: " << count;
+            //     LOG_INFO << "recv size: " << received;
+            // }
+            adapter_422.send(buf.data(), test_mtu);
         }
     });
 
@@ -610,11 +610,11 @@ int main() {
 
     // test_ddr_transport();
     // test_udp_link();
-    test_rs422_device(0);
-    test_rs422_device(1);
+    // test_rs422_device(0);
+    // test_rs422_device(1);
     test_rs422_device(2);
-    test_rs422_device(3);
-    test_rs422_device(4);
+    // test_rs422_device(3);
+    // test_rs422_device(4);
     // test_can_transport();
     // test_helm_transport();
     // test_IO_transport();
