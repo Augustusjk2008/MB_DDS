@@ -114,29 +114,25 @@ void Subscriber::worker_loop() {
         }
 
         if (ring_buffer_->get_unread_count(subscriber_state_) > 0) {
-            // 从环形缓冲区读取下一条消息
             Message* msg = nullptr;
-            if (ring_buffer_->read_latest(subscriber_state_, msg)) {
+            bool read_ok = ring_buffer_->read_latest(subscriber_state_, msg);
+            if (read_ok) {
                 received_size = msg->msg_size();
                 LOG_DEBUG << "Subscriber " << subscriber_name_ << " received latest message of total size: " << received_size;
-            }
-            
-            // 解析消息
-            if (received_size >= sizeof(MessageHeader)) {   
-                // 验证消息头是否有效
-                if (msg->is_valid(ring_buffer_->is_checksum_enabled())) {    
-                    // 调用回调函数
-                    if (callback_) { 
-                        LOG_DEBUG << "msg->get_data(): " << msg->get_data(); 
-                        LOG_DEBUG << "msg->msg_data_size(): " << msg->msg_data_size(); 
-                        LOG_DEBUG << "msg->header.timestamp: " << msg->header.timestamp; 
-                        callback_(msg->get_data(), msg->msg_data_size(), msg->header.timestamp);
+                if (received_size >= sizeof(MessageHeader)) {
+                    if (msg->is_valid(ring_buffer_->is_checksum_enabled())) {
+                        if (callback_) {
+                            LOG_DEBUG << "msg->get_data(): " << msg->get_data();
+                            LOG_DEBUG << "msg->msg_data_size(): " << msg->msg_data_size();
+                            LOG_DEBUG << "msg->header.timestamp: " << msg->header.timestamp;
+                            callback_(msg->get_data(), msg->msg_data_size(), msg->header.timestamp);
+                        }
+                    } else {
+                        LOG_ERROR << "Invalid message received on topic: " << metadata_->topic_name;
                     }
-                } else {                
-                    LOG_ERROR << "Invalid message received on topic: " << metadata_->topic_name;
+                } else {
+                    LOG_ERROR << "Invalid message size received on topic: " << metadata_->topic_name;
                 }
-            } else {
-                LOG_ERROR << "Invalid message size received on topic: " << metadata_->topic_name;
             }
         } else {
             // 等待通知以避免忙等待
@@ -226,6 +222,9 @@ size_t Subscriber::read(void* data, size_t size, bool latest) {
     // 绑定句柄时直接读取硬件
     if (handle_ != nullptr) {
         return handle_->receive((uint8_t*)data, size);
+    }
+    if (ring_buffer_->get_unread_count(subscriber_state_) == 0) {
+        return 0;
     }
     if (latest) {
         return read_latest(data, size);

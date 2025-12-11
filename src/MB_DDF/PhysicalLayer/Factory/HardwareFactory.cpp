@@ -62,9 +62,9 @@ std::shared_ptr<DDS::Handle> HardwareFactory::create(const std::string& name, vo
             };
             h->dev->ioctl(Device::HelmDevice::IOCTL_HELM, &ctl_helm, sizeof(ctl_helm));
         }
-    } else if (name == "rs422_1") {
-        tc.device_offset = 0;
-        tc.event_number = 0;
+    } else if (name == "imu") {
+        tc.device_offset = 0x10000;
+        tc.event_number = 0x1;
         h->tp.open(tc);
         h->mtu = 255;
         h->dev = std::make_unique<Device::Rs422Device>(h->tp, h->mtu);
@@ -79,13 +79,13 @@ std::shared_ptr<DDS::Handle> HardwareFactory::create(const std::string& name, vo
             Device::Rs422Device::Config cfg = {
                 .ucr = 0x30,
                 .mcr = 0x20,
-                .brsr = 0x0C,
+                .brsr = 0x0A,
                 .icr = 0x01,
                 .tx_head_lo = 0xAA,
-                .tx_head_hi = 0x55,
+                .tx_head_hi = 0x1A,
                 .rx_head_lo = 0xAA,
-                .rx_head_hi = 0x55,
-                .lpb = 0xAF,    // AF = 回环
+                .rx_head_hi = 0x1A,
+                .lpb = 0x00,    // AF = 回环
                 .intr = 0xAE,   // AE = 自控中断
                 .evt = 1250,    // 125 = 脉冲宽度 1us
             };

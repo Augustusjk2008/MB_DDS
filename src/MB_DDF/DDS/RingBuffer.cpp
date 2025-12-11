@@ -485,8 +485,8 @@ bool RingBuffer::commit(const ReserveToken& token, size_t used, uint32_t topic_i
     // 先保证载荷写入对其他线程可见
     std::atomic_thread_fence(std::memory_order_release);
 
-    // 填充消息头
-    uint64_t seq = header_->current_sequence.fetch_add(1, std::memory_order_acq_rel) + 1;
+    // 填充消息头（先写头，后发布序列号）
+    uint64_t seq = header_->current_sequence.load(std::memory_order_acquire) + 1;
     buffer_msg->header.magic = MessageHeader::MAGIC_NUMBER;
     buffer_msg->header.topic_id = topic_id;
     buffer_msg->header.sequence = seq;
@@ -501,13 +501,11 @@ bool RingBuffer::commit(const ReserveToken& token, size_t used, uint32_t topic_i
         new_write_pos = 0;
     }
 
-    // 更新环形缓冲区头部
+    // 更新环形缓冲区头部（发布序列号，保证写入可见）
+    std::atomic_thread_fence(std::memory_order_release);
     header_->current_sequence.store(seq, std::memory_order_release);
     header_->write_pos.store(new_write_pos, std::memory_order_release);
     header_->timestamp.store(buffer_msg->header.timestamp, std::memory_order_release);
-
-    // 确保消息完全可见后再通知
-    std::atomic_thread_fence(std::memory_order_release);
     notify_subscribers();
 
     LOG_DEBUG << "commit message seq " << seq << " size " << used;
