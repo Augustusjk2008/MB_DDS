@@ -187,6 +187,11 @@ private:
 };
 
 struct PubAndSub {
+    PubAndSub(std::shared_ptr<Handle> handle, MessageCallback callback = nullptr) {
+        auto& dds_core = DDSCore::instance();
+        publisher = dds_core.create_publisher("handle://p", handle);
+        subscriber = dds_core.create_subscriber("handle://s", handle, callback);
+    }
     std::shared_ptr<Publisher> publisher;
     std::shared_ptr<Subscriber> subscriber;
     bool write(const void* data, size_t size) { return publisher->publish(data, size); }

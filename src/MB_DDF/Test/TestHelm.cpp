@@ -70,7 +70,7 @@ int main() {
     auto helm = MB_DDF::PhysicalLayer::Factory::HardwareFactory::create("helm");
     auto pwm_writer = dds.create_writer("hardware://pwm_write", helm);
     auto ad_reader = dds.create_reader("hardware://ad_read", helm);
-    MB_DDF::DDS::PubAndSub helm_operator = {pwm_writer, ad_reader};
+    MB_DDF::DDS::PubAndSub helm_operator(helm);
 
     // 配置舵机定时器选项
     SystemTimerOptions opt_helm;
