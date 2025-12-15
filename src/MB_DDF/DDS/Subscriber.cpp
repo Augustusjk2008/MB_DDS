@@ -84,7 +84,7 @@ void Subscriber::unsubscribe() {
     // 此处会引起惊群效益，性能不佳，目前为折衷设计，后续可以改进为使用通知直接唤醒线程
     if (callback_) {
         LOG_DEBUG << "Subscriber " << subscriber_id_ << " " << subscriber_name_ << " notifies subscribers";
-        ring_buffer_->notify_subscribers();
+        if (ring_buffer_) ring_buffer_->notify_subscribers();
     }
 
     // 标记为未订阅
@@ -96,7 +96,7 @@ void Subscriber::unsubscribe() {
     }
     
     // 从RingBuffer中注销订阅者
-    ring_buffer_->unregister_subscriber(subscriber_state_);
+    if (ring_buffer_ && subscriber_state_) ring_buffer_->unregister_subscriber(subscriber_state_);
     LOG_DEBUG << "Subscriber " << subscriber_id_ << " " << subscriber_name_ << " unregistered from ring buffer";
 }
 
