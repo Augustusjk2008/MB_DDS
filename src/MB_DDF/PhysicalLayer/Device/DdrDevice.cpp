@@ -23,18 +23,25 @@ bool DdrDevice::send(const uint8_t* data, uint32_t len) {
 int32_t DdrDevice::receive(uint8_t* buf, uint32_t buf_size) {
     if (!buf || buf_size == 0) return 0;
     bool ok = transport().continuousRead(0, buf, buf_size);
-    if (!ok) return -1;
+    if (!ok) return 0;
     return static_cast<int32_t>(buf_size);
 }
 
 int32_t DdrDevice::receive(uint8_t* buf, uint32_t buf_size, uint32_t timeout_us) {
-    int32_t n = receive(buf, buf_size);
-    if (n != 0) return n;
-    if (timeout_us == 0) return 0;
-    uint32_t waited = 0;
+    auto& tp = transport();
+    if (!buf || buf_size == 0) return 0;
+
+    if (tp.getEventFd() >= 0) {
+        uint32_t bitmap = 0;
+        int ev = tp.waitEvent(&bitmap, timeout_us / 1000);
+        if (ev <= 0) return ev == 0 ? 0 : -1;
+        return receive(buf, buf_size);
+    }
+
     const uint32_t step_us = 100;
+    uint32_t waited = 0;
     while (waited <= timeout_us) {
-        n = receive(buf, buf_size);
+        int32_t n = receive(buf, buf_size);
         if (n != 0) return n;
         usleep(step_us);
         waited += step_us;

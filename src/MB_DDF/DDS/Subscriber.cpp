@@ -12,6 +12,7 @@
 #include "MB_DDF/Debug/Logger.h"
 #include <random>
 #include <pthread.h>
+#include <signal.h>
 #include <sched.h>
 #include <unistd.h>
 
@@ -90,6 +91,10 @@ void Subscriber::unsubscribe() {
     // 标记为未订阅
     subscribed_.store(false);
     
+    if (handle_ && worker_thread_.joinable()) {
+        pthread_kill(worker_thread_.native_handle(), SIGUSR1);
+    }
+    
     if (worker_thread_.joinable()) {
         worker_thread_.join();
         LOG_DEBUG << "Subscriber " << subscriber_id_ << " " << subscriber_name_ << " worker thread joined";
@@ -105,7 +110,7 @@ void Subscriber::worker_loop() {
     while (running_.load()) {
         received_size = 0;
         if (handle_ != nullptr) {
-            received_size = handle_->receive(receive_buffer_.data(), receive_buffer_.size(), 100000); 
+            received_size = handle_->receive(receive_buffer_.data(), receive_buffer_.size(), 10000); 
             // 调用回调函数
             if (callback_ && received_size > 0) { 
                 callback_(receive_buffer_.data(), received_size, 0);

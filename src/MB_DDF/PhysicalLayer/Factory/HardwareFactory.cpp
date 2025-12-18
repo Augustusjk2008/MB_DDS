@@ -64,7 +64,38 @@ std::shared_ptr<DDS::Handle> HardwareFactory::create(const std::string& name, vo
         }
     } else if (name == "imu") {
         tc.device_offset = 0x10000;
-        tc.event_number = 0x1;
+        tc.event_number = 1;
+        h->tp.open(tc);
+        h->mtu = 255;
+        h->dev = std::make_unique<Device::Rs422Device>(h->tp, h->mtu);
+        LinkConfig lc; 
+        h->dev->open(lc);
+        Device::Rs422Device::Config cfg_return;
+        if (param != nullptr) {
+            h->dev->ioctl(Device::Rs422Device::IOCTL_CONFIG, 
+                param, sizeof(Device::Rs422Device::Config), 
+                &cfg_return, sizeof(Device::Rs422Device::Config)); 
+        } else {
+            Device::Rs422Device::Config cfg = {
+                .ucr = 0x30,
+                .mcr = 0x20,
+                .brsr = 0x0A,
+                .icr = 0x01,
+                .tx_head_lo = 0xAA,
+                .tx_head_hi = 0x1A,
+                .rx_head_lo = 0xAA,
+                .rx_head_hi = 0x1A,
+                .lpb = 0x00,    // AF = 回环
+                .intr = 0xAE,   // AE = 自控中断
+                .evt = 1250,    // 125 = 脉冲宽度 1us
+            };
+            h->dev->ioctl(Device::Rs422Device::IOCTL_CONFIG, 
+                &cfg, sizeof(cfg), 
+                &cfg_return, sizeof(cfg_return)); 
+        }
+    }  else if (name == "dyt") {
+        tc.device_offset = 0x20000;
+        tc.event_number = 2;
         h->tp.open(tc);
         h->mtu = 255;
         h->dev = std::make_unique<Device::Rs422Device>(h->tp, h->mtu);
@@ -97,8 +128,9 @@ std::shared_ptr<DDS::Handle> HardwareFactory::create(const std::string& name, vo
         tc.dma_h2c_channel = 0;
         tc.dma_c2h_channel = 0;
         tc.device_offset = 0x0;
+        tc.event_number = 6;
         h->tp.open(tc);
-        h->mtu = 64 * 1024;
+        h->mtu = 640 * 1024;
         h->dev = std::make_unique<Device::DdrDevice>(h->tp, h->mtu);
         LinkConfig lc; 
         h->dev->open(lc);

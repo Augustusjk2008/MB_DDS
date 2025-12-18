@@ -110,10 +110,10 @@ human_size() {
 show_artifacts() {
     local dir="$1"
     local label="$2"
-    echo -e "${GREEN}[${label}] 生成的静态库：${NC}"
+    echo -e "${GREEN}[${label}] 生成的动态库：${NC}"
     local lib_rows=()
     local lib_maxlen=0
-    for lib in "$dir"/*.a; do
+    for lib in "$dir"/*.so; do
         if [ -f "$lib" ]; then
             size=$(stat -c %s "$lib" 2>/dev/null || stat -f %z "$lib")
             hsize=$(human_size "$size")

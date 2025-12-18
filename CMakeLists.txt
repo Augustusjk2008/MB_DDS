@@ -18,6 +18,7 @@ set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "Configurations" FORC
 # 设置C++标准为C++20
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # 添加构建选项
 option(BUILD_TESTS "Build test programs" ON)
@@ -94,19 +95,15 @@ file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
     "src/MB_DDF/Monitor/*.cpp"
 )
 
-# 递归查找 Timer 库源文件
-file(GLOB_RECURSE TIMER_SOURCES CONFIGURE_DEPENDS
-    "src/MB_DDF/Timer/*.cpp"
-)
-
 # 递归查找物理层库源文件
 file(GLOB_RECURSE PHYSICAL_SOURCES CONFIGURE_DEPENDS
     "src/MB_DDF/PhysicalLayer/*.cpp"
 )
 
-# 递归查找定时器库源文件
-file(GLOB_RECURSE TIMER_SOURCES CONFIGURE_DEPENDS
+# 递归查找 Tools 库源文件（包括 Timer 与 Tools 目录）
+file(GLOB_RECURSE TOOLS_SOURCES CONFIGURE_DEPENDS
     "src/MB_DDF/Timer/*.cpp"
+    "src/MB_DDF/Tools/*.cpp"
 )
 
 # 递归查找所有头文件（用于 IDE 展示与包含路径）
@@ -115,11 +112,11 @@ file(GLOB_RECURSE HEADERS CONFIGURE_DEPENDS
     "src/MB_DDF/*.hpp"
 )
 
-# 创建三个静态库：核心库、物理层库、定时器库（条件编译）
+# 创建三个动态库：核心库、物理层库、工具库（条件编译）
 if(BUILD_LIBS)
-    add_library(MB_DDF_CORE STATIC ${CORE_SOURCES} ${HEADERS})
-    add_library(MB_DDF_PHYSICAL STATIC ${PHYSICAL_SOURCES} ${HEADERS})
-    add_library(MB_DDF_TIMER STATIC ${TIMER_SOURCES} ${HEADERS})
+    add_library(MB_DDF_CORE SHARED ${CORE_SOURCES} ${HEADERS})
+    add_library(MB_DDF_PHYSICAL SHARED ${PHYSICAL_SOURCES} ${HEADERS})
+    add_library(MB_DDF_TOOLS SHARED ${TOOLS_SOURCES} ${HEADERS})
     # 检测并链接 libgpiod（GPIO 中断支持，供 SpiTransport 使用）
     find_library(GPIOD_LIBRARY NAMES gpiod)
     find_path(GPIOD_INCLUDE_DIR NAMES gpiod.h)
@@ -238,7 +235,7 @@ if(BUILD_LIBS)
         message(STATUS "FTXUI not found; TestWithUI will be skipped")
     endif()
 
-    foreach(TGT IN ITEMS MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TIMER)
+    foreach(TGT IN ITEMS MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TOOLS)
         target_include_directories(${TGT} PUBLIC
             ${CMAKE_CURRENT_SOURCE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -293,19 +290,19 @@ if(BUILD_TESTS)
 
         if(BUILD_LIBS)
             if(TEST_NAME STREQUAL "TestMonitor")
-                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TIMER)
+                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TOOLS)
             elseif(TEST_NAME STREQUAL "TestPublishPerf")
-                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TIMER)
+                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TOOLS)
             elseif(TEST_NAME STREQUAL "TestPhysicalLayer")
-                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_PHYSICAL MB_DDF_CORE MB_DDF_TIMER)
+                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_PHYSICAL MB_DDF_CORE MB_DDF_TOOLS)
             elseif(TEST_NAME STREQUAL "TestRealTime")
-                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TIMER)
+                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TOOLS)
             elseif(TEST_NAME STREQUAL "TestHelm")
-                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TIMER)
+                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TOOLS)
             elseif(TEST_NAME STREQUAL "TestWithUI")
-                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_TIMER)
+                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_TOOLS)
             else()
-                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_TIMER)
+                target_link_libraries(${TEST_NAME} PRIVATE MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TOOLS)
             endif()
         else()
             if(TEST_NAME STREQUAL "TestMonitor")
@@ -360,7 +357,7 @@ endif()
 #     ${CMAKE_CURRENT_SOURCE_DIR}/src
 # )
 # if(BUILD_LIBS)
-#     target_link_libraries(UpgradeAndTest PRIVATE MB_DDF_PHYSICAL MB_DDF_CORE MB_DDF_TIMER pthread rt)
+#     target_link_libraries(UpgradeAndTest PRIVATE MB_DDF_PHYSICAL MB_DDF_CORE MB_DDF_TOOLS pthread rt)
 # else()
 #     target_link_libraries(UpgradeAndTest PRIVATE pthread rt)
 # endif()
@@ -377,7 +374,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     )
     
     if(BUILD_LIBS)
-        foreach(TGT IN ITEMS MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TIMER)
+        foreach(TGT IN ITEMS MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TOOLS)
             target_compile_options(${TGT} PRIVATE ${DEBUG_COMPILE_OPTIONS})
         endforeach()
     endif()
@@ -412,7 +409,7 @@ else()
     )
     
     if(BUILD_LIBS)
-        foreach(TGT IN ITEMS MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TIMER)
+        foreach(TGT IN ITEMS MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TOOLS)
             target_compile_options(${TGT} PRIVATE ${RELEASE_COMPILE_OPTIONS})
         endforeach()
     endif()
@@ -433,7 +430,7 @@ else()
     endif()
     
     if(BUILD_LIBS AND LTO_OPTIONS)
-        foreach(TGT IN ITEMS MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TIMER)
+        foreach(TGT IN ITEMS MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TOOLS)
             target_compile_options(${TGT} PRIVATE ${LTO_OPTIONS})
         endforeach()
     endif()
@@ -463,6 +460,6 @@ add_custom_target(info
     COMMAND ${CMAKE_COMMAND} -E echo "Physical Sources: ${PHYSICAL_SOURCES}"
     COMMAND ${CMAKE_COMMAND} -E echo "Timer Sources: ${TIMER_SOURCES}"
     COMMAND ${CMAKE_COMMAND} -E echo "Test Programs: ${TEST_SOURCES}"
-    COMMAND ${CMAKE_COMMAND} -E echo "Static Libraries: MB_DDF_CORE, MB_DDF_PHYSICAL, MB_DDF_TIMER"
+    COMMAND ${CMAKE_COMMAND} -E echo "Shared Libraries: MB_DDF_CORE, MB_DDF_PHYSICAL, MB_DDF_TOOLS"
     COMMENT "Displaying build information"
 )

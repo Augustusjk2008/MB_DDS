@@ -29,17 +29,17 @@ public:
     // - tx_head_lo/hi: 发送头两个字节（低/高）
     // - rx_head_lo/hi: 接收头两个字节（低/高）
     struct Config {
-        uint8_t ucr{0};
+        uint8_t ucr{0x30};
         uint8_t mcr{0x20};
-        uint8_t brsr{0};
+        uint8_t brsr{0xA};
         uint8_t icr{1};
-        uint8_t tx_head_lo{0};
-        uint8_t tx_head_hi{0};
-        uint8_t rx_head_lo{0};
-        uint8_t rx_head_hi{0};
+        uint8_t tx_head_lo{0xAA};
+        uint8_t tx_head_hi{0x55};
+        uint8_t rx_head_lo{0xAA};
+        uint8_t rx_head_hi{0x55};
         uint8_t lpb{0};
-        uint8_t intr{0};
-        uint16_t evt{0};
+        uint8_t intr{0xAE};
+        uint16_t evt{1250};
     };
 
     bool open(const LinkConfig& cfg) override;
