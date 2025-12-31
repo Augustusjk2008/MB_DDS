@@ -442,6 +442,22 @@ else()
     endif()
 endif()
 
+# 安装规则 - 安装三个动态库与头文件（条件编译）
+if(BUILD_LIBS)
+    install(TARGETS MB_DDF_CORE MB_DDF_PHYSICAL MB_DDF_TOOLS
+        LIBRARY DESTINATION bin
+        ARCHIVE DESTINATION bin
+        RUNTIME DESTINATION bin
+    )
+
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/src/"
+        DESTINATION include
+        FILES_MATCHING
+        PATTERN "*.h"
+        PATTERN "*.hpp"
+    )
+endif()
+
 # 安装规则 - 安装所有Test程序（条件编译）
 if(BUILD_TESTS)
     foreach(TEST_NAME ${CREATED_TEST_TARGETS})
